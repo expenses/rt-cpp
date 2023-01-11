@@ -1,0 +1,6 @@
+[submodule "external/openexr"]
+	path = external/openexr
+	url = https://github.com/AcademySoftwareFoundation/openexr
+[submodule "external/dbg-macro"]
+	path = external/dbg-macro
+	url = https://github.com/sharkdp/dbg-macro
