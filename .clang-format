@@ -1,2 +1,7 @@
 ---
-IndentWidth: 4
+BasedOnStyle: Microsoft
+BraceWrapping:
+  AfterFunction: false
+  AfterStruct: false
+  AfterControlStatement: false
+  BeforeElse: false

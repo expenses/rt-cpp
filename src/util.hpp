@@ -4,6 +4,8 @@
 #include <glm/mat3x3.hpp>
 #include <glm/vec2.hpp>
 #include <glm/vec3.hpp>
+#include <optional>
+#include <tuple>
 
 #include "util.hpp"
 
@@ -27,45 +29,29 @@ mat3 rotation_matrix(vec3 new_y) {
     return mat3(new_x, new_y, new_z);
 }
 
-vec3 sky_colour(vec3 view) {
-    float up = dot(view, normalize(vec3(1, 1, 2)));
-
-    return vec3(0.0, 0.0, 0.2) + vec3(max((up * 100.0f) - 99.0f, 0.0f) * 50.0);
-}
-
-struct Roots {
-    float t_0, t_1;
-    bool valid;
-};
-
-Roots quadratic(double a, double b, double c) {
+std::optional<std::tuple<float, float>> quadratic(double a, double b, double c) {
     auto discrim = b * b - 4.0 * a * c;
 
-    Roots roots = {0.0, 0.0, false};
-
     if (discrim < 0.0) {
-        return roots;
+        return std::nullopt;
     }
 
     auto root_discrim = sqrt(discrim);
 
-    double q;
+    double q = -0.5 * (b + root_discrim);
 
     if (b < 0.0) {
         q = -0.5 * (b - root_discrim);
-    } else {
-        q = -0.5 * (b + root_discrim);
     }
 
-    roots.t_0 = q / a;
-    roots.t_1 = c / q;
-    roots.valid = true;
+    auto t_0 = static_cast<float>(q / a);
+    auto t_1 = static_cast<float>(c / q);
 
-    if (roots.t_0 > roots.t_1) {
-        std::swap(roots.t_0, roots.t_1);
+    if (t_0 > t_1) {
+        std::swap(t_0, t_1);
     }
 
-    return roots;
+    return std::make_tuple(t_0, t_1);
 }
 
 float luminance(vec3 rgb) {

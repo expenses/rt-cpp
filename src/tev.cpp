@@ -2,7 +2,7 @@
 #include <netinet/tcp.h>
 #include <span>
 #include <stdexcept>
-#include <stdio.h>
+#include <cstdio>
 #include <string>
 #include <sys/socket.h>
 #include <unistd.h>
@@ -18,13 +18,15 @@ struct TevConnection {
             throw std::runtime_error("Socket creation failed");
         }
 
-        struct sockaddr_in ip_address;
-        ip_address.sin_family = AF_INET;
-        ip_address.sin_port = htons(14158);
-        ip_address.sin_addr.s_addr = inet_addr("127.0.0.1");
+        struct sockaddr_in ip_address {
+            .sin_family = AF_INET,
+            .sin_port = htons(14158),
+            .sin_addr = {
+                .s_addr = inet_addr("127.0.0.1")
+            }
+        };
 
-        auto connection_result = connect(
-            socket_fd, (struct sockaddr *)&ip_address, sizeof(ip_address));
+        auto connection_result = connect(socket_fd, (struct sockaddr *)&ip_address, sizeof(ip_address));
 
         if (connection_result < 0) {
             printf("connecting failed with %i\n", connection_result);
@@ -32,8 +34,8 @@ struct TevConnection {
         }
     }
 
-    void send_create(const std::string &image_name, uint32_t width,
-                     uint32_t height, std::span<std::string> channel_names) {
+    void send_create(const std::string &image_name, uint32_t width, uint32_t height,
+                     const std::span<std::string> channel_names) {
         uint8_t packet_type = 4;
         uint8_t grab_focus = 0;
         uint32_t num_channels = channel_names.size();
@@ -61,19 +63,15 @@ struct TevConnection {
         }
     }
 
-    void send_update(const std::string &image_name, uint32_t x, uint32_t y,
-                     uint32_t width, uint32_t height,
-                     std::span<std::string> channel_names,
-                     std::span<uint64_t> channel_offsets,
-                     std::span<uint64_t> channel_strides,
-                     std::span<float> data) {
+    void send_update(const std::string &image_name, uint32_t x, uint32_t y, uint32_t width, uint32_t height,
+                     const std::span<std::string> channel_names, std::span<uint64_t> channel_offsets,
+                     std::span<uint64_t> channel_strides, std::span<float> data) {
         uint8_t packet_type = 6;
         uint8_t grab_focus = 0;
         uint32_t channel_count = channel_names.size();
         uint8_t null_byte = 0;
 
-        uint32_t length = 4 + (1 * 2) + image_name.length() + 1 + (4 * 5) +
-                          channel_offsets.size() * 8 +
+        uint32_t length = 4 + (1 * 2) + image_name.length() + 1 + (4 * 5) + channel_offsets.size() * 8 +
                           channel_strides.size() * 8 + data.size() * 4;
         for (auto &channel_name : channel_names) {
             length += channel_name.length() + 1;

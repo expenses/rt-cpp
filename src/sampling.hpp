@@ -11,25 +11,25 @@
 using namespace glm;
 
 struct Sample1D {
-    int index;
-    float pdf;
-    float point;
+    const int index;
+    const float pdf;
+    const float point;
 };
 
 std::ostream &operator<<(std::ostream &out, const Sample1D &sample) {
-    out << "{pdf: " << sample.pdf << ", indices: " << sample.index
-        << ", point: " << sample.point << "}";
+    out << "{pdf: " << sample.pdf << ", indices: " << sample.index << ", point: " << sample.point << "}";
     return out;
 }
 
 struct Distribution1D {
-    Distribution1D() {}
+    Distribution1D() {
+    }
 
     Distribution1D(std::span<float> func) {
         function.reserve(func.size());
         function.insert(function.begin(), func.begin(), func.end());
 
-        auto n = function.size();
+        const auto n = function.size();
 
         cdf.resize(function.size() + 1);
         cdf[0] = 0.0;
@@ -38,7 +38,7 @@ struct Distribution1D {
         // https://www.pbr-book.org/3ed-2018/Monte_Carlo_Integration/Sampling_Random_Variables#x1-Example:Piecewise-Constant1DFunctions.
         // This also results in the integral being the average of each piece.
         for (int i = 1; i < n + 1; i++) {
-            cdf[i] = cdf[i - 1] + function[i - 1] / n;
+            cdf[i] = cdf[i - 1] + function[i - 1] / float(n);
         }
 
         function_integral = cdf[function.size()];
@@ -49,25 +49,22 @@ struct Distribution1D {
     }
 
     Sample1D sample(float rng) {
-        auto pointer = lower_bound(cdf.begin(), cdf.end(), rng);
-        int upper_index = std::max(std::distance(cdf.begin(), pointer), 1l);
-        int lower_index = upper_index - 1;
+        const auto pointer = lower_bound(cdf.begin(), cdf.end(), rng);
+        const int upper_index = std::max(std::distance(cdf.begin(), pointer), 1l);
+        const int lower_index = upper_index - 1;
 
-        Sample1D sample;
-        sample.index = lower_index;
         // Because the integral is equivalent of the average of each piece of
         // the function, the pdf will be >1 for higher-than-average values and
         // <1 for lower-than-average values.
-        sample.pdf = function[lower_index] / function_integral;
+        const auto pdf = function[lower_index] / function_integral;
 
         // Calculate the offset between the two indices as a fraction
         float offset_from_index = rng - cdf[lower_index];
         offset_from_index /= (cdf[upper_index] - cdf[lower_index]);
 
-        sample.point =
-            ((float)lower_index + offset_from_index) / function.size();
+        const auto point = (float(lower_index) + offset_from_index) / function.size();
 
-        return sample;
+        return Sample1D{.index = lower_index, .pdf = pdf, .point = point};
     }
 
     std::vector<float> cdf;
@@ -82,13 +79,13 @@ struct Sample2D {
 };
 
 std::ostream &operator<<(std::ostream &out, const Sample2D &sample) {
-    out << "{pdf: " << sample.pdf << ", indices: " << sample.indices
-        << ", point: " << sample.point << "}";
+    out << "{pdf: " << sample.pdf << ", indices: " << sample.indices << ", point: " << sample.point << "}";
     return out;
 }
 
 struct Distribution2D {
-    Distribution2D() {}
+    Distribution2D() {
+    }
 
     Distribution2D(std::span<float> image, uint32_t width, uint32_t height) {
         row_distributions.reserve(height);
@@ -104,16 +101,12 @@ struct Distribution2D {
     };
 
     Sample2D sample(vec2 rng) {
-        Sample2D sample;
-
         Sample1D row_sample = main_distribution.sample(rng.x);
         Sample1D col_sample = row_distributions[row_sample.index].sample(rng.y);
 
-        sample.indices = ivec2(col_sample.index, row_sample.index);
-        sample.pdf = row_sample.pdf * col_sample.pdf;
-        sample.point = vec2(col_sample.point, row_sample.point);
-
-        return sample;
+        return Sample2D{.pdf = row_sample.pdf * col_sample.pdf,
+                        .indices = ivec2(col_sample.index, row_sample.index),
+                        .point = vec2(col_sample.point, row_sample.point)};
     }
 
     std::vector<Distribution1D> row_distributions;

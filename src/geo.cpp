@@ -1,7 +1,9 @@
 #include <glm/geometric.hpp>
 #include <glm/vec3.hpp>
+#include <optional>
 #include <utility>
 
+#include "bsdf.hpp"
 #include "util.hpp"
 
 using namespace glm;
@@ -10,7 +12,6 @@ struct Intersection {
     float t;
     vec3 normal;
     vec3 position;
-    bool valid;
 };
 
 struct Ray {
@@ -21,37 +22,39 @@ struct Ray {
 struct Sphere {
     vec3 center;
     float radius;
-    vec3 colour;
+    Bsdf bsdf;
 
-    Intersection intersect(const Ray &ray) {
+    std::optional<Intersection> intersect(const Ray &ray) {
         auto oc = ray.o - center;
 
         auto a = dot(ray.d, ray.d);
         auto b = 2.0 * dot(oc, ray.d);
         auto c = dot(oc, oc) - radius * radius;
 
-        Intersection intersection = {0.0, vec3(0.0), vec3(0.0), false};
-
         auto roots = quadratic(a, b, c);
 
-        if (!roots.valid) {
-            return intersection;
+        if (!roots) {
+            return std::nullopt;
         }
 
-        if (roots.t_1 <= 0.0 || roots.t_0 > ray.max_t) {
-            return intersection;
+        auto [t_0, t_1] = roots.value();
+
+        if (t_1 <= 0.0 || t_0 > ray.max_t) {
+            return std::nullopt;
         }
 
-        intersection.valid = true;
-        intersection.t = roots.t_0;
+        auto t = t_0;
 
-        if (roots.t_0 <= 0.0) {
-            intersection.t = roots.t_1;
+        if (t_0 <= 0.0) {
+            t = t_1;
         }
 
-        intersection.position = ray.o + intersection.t * ray.d;
-        intersection.normal = normalize(intersection.position - center);
+        auto position = ray.o + t * ray.d;
 
-        return intersection;
+        return Intersection{
+            .t = t,
+            .normal = normalize(position - center),
+            .position = position,
+        };
     }
 };
