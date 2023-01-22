@@ -1,26 +1,16 @@
-#include <cstdint>
-#include <vector>
+#include "buffers.h"
 
-struct OutputBuffer {
-    std::vector<float> data;
+OutputBuffer::OutputBuffer(uint32_t width, uint32_t height) {
+    data = std::vector<float>(width * height * 3, 0.0f);
+}
 
-    OutputBuffer(uint32_t width, uint32_t height) {
-        data = std::vector<float>(width * height * 3, 0.0f);
+AccumulationBuffer::AccumulationBuffer(uint32_t width, uint32_t height) {
+    data = std::vector<float>(width * height * 3, 0.0f);
+    num_samples = 0;
+}
+
+void AccumulationBuffer::update_output(OutputBuffer &output) {
+    for (int i = 0; i < data.size(); i++) {
+        output.data[i] = data[i] / num_samples;
     }
-};
-
-struct AccumulationBuffer {
-    std::vector<float> data;
-    uint64_t num_samples;
-
-    AccumulationBuffer(uint32_t width, uint32_t height) {
-        data = std::vector<float>(width * height * 3, 0.0f);
-        num_samples = 0;
-    }
-
-    void update_output(OutputBuffer &output) {
-        for (int i = 0; i < data.size(); i++) {
-            output.data[i] = data[i] / num_samples;
-        }
-    }
-};
+}

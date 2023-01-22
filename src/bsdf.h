@@ -1,47 +1,47 @@
 #pragma once
-#include <glm/glm.hpp>
+#include <cmath>
 
 using namespace glm;
 
-float cos_theta(vec3 w) {
+inline float cos_theta(vec3 w) {
     return w.z;
 }
 
-float cos_2_theta(vec3 w) {
+inline float cos_2_theta(vec3 w) {
     return cos_theta(w) * cos_theta(w);
 }
 
-float sin_2_theta(vec3 w) {
+inline float sin_2_theta(vec3 w) {
     return max(0.0f, 1.0f - cos_2_theta(w));
 }
 
-float sin_theta(vec3 w) {
+inline float sin_theta(vec3 w) {
     return sqrt(sin_2_theta(w));
 }
 
-float tan_theta(vec3 w) {
+inline float tan_theta(vec3 w) {
     return sin_theta(w) / cos_theta(w);
 }
 
-float tan_2_theta(vec3 w) {
+inline float tan_2_theta(vec3 w) {
     return sin_2_theta(w) / cos_2_theta(w);
 }
 
-float cos_phi(vec3 w) {
+inline float cos_phi(vec3 w) {
     auto sin_theta_ = sin_theta(w);
     return (sin_theta_ == 0) ? 1 : clamp(w.x / sin_theta_, -1.0f, 1.0f);
 }
 
-float sin_phi(vec3 w) {
+inline float sin_phi(vec3 w) {
     auto sin_theta_ = sin_theta(w);
     return (sin_theta_ == 0) ? 0 : clamp(w.y / sin_theta_, -1.0f, 1.0f);
 }
 
-float cos_2_phi(vec3 w) {
+inline float cos_2_phi(vec3 w) {
     return cos_phi(w) * cos_phi(w);
 }
 
-float sin_2_phi(vec3 w) {
+inline float sin_2_phi(vec3 w) {
     return sin_phi(w) * sin_phi(w);
 }
 

@@ -1,42 +1,69 @@
-#include <chrono>
-#include <glm/ext.hpp>
-#include <glm/glm.hpp>
-#include <iostream>
 #include <cmath>
-#include <random>
+#include <iostream>
 
-#include "buffers.cpp"
-#include "geo.cpp"
-#include "image.cpp"
-#include "sampling.hpp"
-#include "tev.cpp"
-#include "util.hpp"
+#include "external.h"
+
+#include "buffers.h"
+#include "debugging.h"
+#include "geo.h"
+#include "image.h"
+#include "sampling.h"
+#include "scene.h"
+#include "tev.h"
+#include "util.h"
+#include <pxr/pxr.h>
 
 using namespace glm;
 
-std::optional<std::tuple<Intersection, Bsdf>> find_intersection(std::span<Sphere> spheres, Ray ray, bool find_any) {
-    std::optional<std::tuple<Intersection, Bsdf>> closest = std::nullopt;
+int main(int argc, char *argv[]) {
+    pxr::UsdStageRefPtr stage = pxr::UsdStage::Open(argv[1]);
+    pxr::UsdGeomXformCache cache;
 
-    for (auto &sphere : spheres) {
-        if (auto intersection_ = sphere.intersect(ray)) {
-            auto intersection = intersection_.value();
+    std::vector<Sphere> spheres;
+    vec3 origin = vec3(0.0, 0.0, 0.0);
+    vec3 look_at = vec3(0.0, 0.0, 0.0);
+    float fov = 0.0;
 
-            if (!closest || intersection.t < std::get<0>(closest.value()).t) {
-                closest = std::optional(std::tuple(intersection, sphere.bsdf));
-                ray.max_t = intersection.t;
+    for (pxr::UsdPrim prim : pxr::UsdPrimRange::Stage(stage)) {
+        if (prim.IsA<pxr::UsdGeomSphere>()) {
+            auto sphere = pxr::UsdGeomSphere(prim);
+
+            double radius;
+            sphere.GetRadiusAttr().Get(&radius);
+
+            auto transform = cache.GetLocalToWorldTransform(prim);
+            pxr::GfVec3d translation = transform.ExtractTranslation();
+
+            pxr::VtArray<pxr::GfVec3f> display_colours;
+            prim.GetAttribute(pxr::UsdGeomTokensType().primvarsDisplayColor).Get(&display_colours);
+            vec3 col = vec3(0.5, 0.5, 0.5);
+            if (display_colours.size() > 0) {
+                col = vec3(display_colours[0][0], display_colours[0][1], display_colours[0][2]);
             }
 
-            if (find_any) {
-                return closest;
-            }
+            auto diffuse = Bsdf{.tag = Bsdf::Tag::Diffuse,
+                                .params = Bsdf::Params{.diffuse = {.colour = col}}};
+
+            spheres.push_back(Sphere{.center = vec3(translation[0], translation[1], translation[2]),
+                                     .radius = float(radius),
+                                     .bsdf = diffuse});
+        } else if (prim.IsA<pxr::UsdGeomCamera>()) {
+            auto camera = pxr::UsdGeomCamera(prim).GetCamera(pxr::UsdTimeCode());
+            fov = camera.GetFieldOfView(pxr::GfCamera::FOVDirection::FOVHorizontal);
+            auto transform = camera.GetTransform();
+            pxr::GfVec3d translation = transform.ExtractTranslation();
+            origin = vec3(translation[0], translation[1], translation[2]);
+            auto frustum = camera.GetFrustum();
+            auto look_at_p = frustum.ComputeLookAtPoint();
+            //look_at = vec3(look_at_p[0], look_at_p[1], look_at_p[2]);
+            dbg(translation);
         }
     }
 
-    return closest;
-}
+    dbg(spheres[0].center.y);
+    dbg(spheres.size());
 
-int main() {
-    auto env_map = Image("san.exr");
+    auto scene = Scene{.spheres = std::move(spheres), .environment_map = Image("scenes/san.exr")};
 
     std::random_device rand_dev;
     std::default_random_engine rng(rand_dev());
@@ -49,8 +76,8 @@ int main() {
     std::vector<uint64_t> channel_offsets = {0, 1, 2};
     std::vector<uint64_t> channel_strides = {3, 3, 3};
 
-    const uint32_t width = 512;
-    const uint32_t height = width;
+    const uint32_t width = 960;
+    const uint32_t height = 540;
 
     auto accum = AccumulationBuffer(width, height);
     auto output = OutputBuffer(width, height);
@@ -59,8 +86,6 @@ int main() {
 
     auto green = Bsdf{.tag = Bsdf::Tag::Diffuse, .params = Bsdf::Params{.diffuse = {.colour = vec3(0.2, 0.9, 0.2)}}};
     auto blue = Bsdf{.tag = Bsdf::Tag::Diffuse, .params = Bsdf::Params{.diffuse = {.colour = vec3(0.3, 0.3, 0.8)}}};
-
-    auto diffuse = Bsdf{.tag = Bsdf::Tag::Diffuse, .params = Bsdf::Params{.diffuse = {.colour = vec3(0.5, 0.5, 0.25)}}};
 
     auto conductor_a =
         Bsdf{.tag = Bsdf::Tag::Conductor,
@@ -78,27 +103,8 @@ int main() {
         Bsdf{.tag = Bsdf::Tag::Conductor,
              .params = Bsdf::Params{.conductor = {.colour = vec3(0.5, 0.5, 0.25), .alpha = vec2(0.03, 0.03)}}};
 
-    Sphere spheres[4] = {
-        // Sphere{.center = vec3(-0.25, -0.25, -0.25), .radius = 0.25, .bsdf = red},
-        // Sphere{.center = vec3(-0.25, +0.25, -0.25), .radius = 0.15, .bsdf = green},
-        // Sphere{.center = vec3(-0.25, -0.25, +0.25), .radius = 0.15, .bsdf = blue},
-        // Sphere{.center = vec3(-0.25, +0.25, +0.25), .radius = 0.15, .bsdf = red},
-        // Sphere{.center = vec3(+0.25, -0.25, -0.25), .radius = 0.25, .bsdf = green},
-        // Sphere{.center = vec3(+0.25, +0.25, -0.25), .radius = 0.25, .bsdf = blue},
-        Sphere{.center = vec3(0, -0.6, 0), .radius = 0.5, .bsdf = conductor_a},
-        Sphere{.center = vec3(0, 0.5, 0), .radius = 0.5, .bsdf = conductor_b},
-        Sphere{.center = vec3(0.75, 0.5, 0.75), .radius = 0.5, .bsdf = conductor_d},
-        Sphere{.center = vec3(0.75, -0.6, 0.75), .radius = 0.5, .bsdf = diffuse},
-        // Sphere{.center = vec3(+0.25, +0.25, +0.25), .radius = 0.15, .bsdf = blue},
-
-        // Sphere{vec3(0, -100.5, 0), 100, vec3(0.1, 1.0, 0.1)},
-    };
-
-    const vec3 origin = vec3(1.5, 0.2, -1.5);
-    const vec3 look_at = vec3(0.0, 0.0, 0.75);
-
     const mat4 view = lookAt(origin, look_at, vec3(0.0, 1.0, 0.0));
-    const mat4 proj = perspective(radians(59.0f), float(width) / float(height), 0.001f, 10000.0f);
+    const mat4 proj = perspective(radians(fov), float(width) / float(height), 0.001f, 10000.0f);
 
     const mat4 view_inverse = inverse(view);
     const mat4 proj_inverse = inverse(proj);
@@ -120,18 +126,19 @@ int main() {
 
                 vec3 colour = vec3(0.0);
 
-                if (auto intersection_ = find_intersection(spheres, ray, false)) {
+                if (auto intersection_ = scene.find_intersection(ray, false)) {
                     auto [intersection, bsdf] = intersection_.value();
 
                     switch (bsdf.tag) {
                     case Bsdf::Tag::Diffuse: {
                         auto params = bsdf.params.diffuse;
 
-                        auto [value, direction] = env_map.sample_pdf(vec2(float_dist(rng), float_dist(rng)));
+                        auto [value, direction] =
+                            scene.environment_map.sample_pdf(vec2(float_dist(rng), float_dist(rng)));
 
                         auto shadow_ray = Ray{intersection.position + direction * vec3(0.0001), direction, 10000.0f};
 
-                        if (!find_intersection(spheres, shadow_ray, true)) {
+                        if (!scene.find_intersection(shadow_ray, true)) {
                             auto l_dot_n = std::max(dot(direction, intersection.normal), 0.0f);
                             colour = value * params.colour * vec3(l_dot_n / M_PI);
                         }
@@ -151,15 +158,15 @@ int main() {
                         auto reflected_ray =
                             Ray{intersection.position + sample_dir * vec3(0.0001), sample_dir, 10000.0f};
 
-                        if (!find_intersection(spheres, reflected_ray, true)) {
-                            colour = env_map.sample_env_map(reflected_ray.d) * params.colour;
+                        if (!scene.find_intersection(reflected_ray, true)) {
+                            colour = scene.environment_map.sample_env_map(reflected_ray.d) * params.colour;
                         }
 
                         break;
                     }
                     }
                 } else {
-                    colour = env_map.sample_env_map(ray.d);
+                    colour = scene.environment_map.sample_env_map(ray.d);
                 }
 
                 auto offset = (y * width + x) * 3;
