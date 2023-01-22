@@ -1,16 +1,16 @@
 #include <cmath>
 #include <iostream>
 
-#include "external.h"
+#include "external.hpp"
 
-#include "buffers.h"
-#include "debugging.h"
-#include "geo.h"
-#include "image.h"
-#include "sampling.h"
-#include "scene.h"
-#include "tev.h"
-#include "util.h"
+#include "buffers.hpp"
+#include "debugging.hpp"
+#include "geo.hpp"
+#include "image.hpp"
+#include "sampling.hpp"
+#include "scene.hpp"
+#include "tev.hpp"
+#include "util.hpp"
 #include <pxr/pxr.h>
 
 using namespace glm;
@@ -41,8 +41,7 @@ int main(int argc, char *argv[]) {
                 col = vec3(display_colours[0][0], display_colours[0][1], display_colours[0][2]);
             }
 
-            auto diffuse = Bsdf{.tag = Bsdf::Tag::Diffuse,
-                                .params = Bsdf::Params{.diffuse = {.colour = col}}};
+            auto diffuse = Bsdf{.tag = Bsdf::Tag::Diffuse, .params = Bsdf::Params{.diffuse = {.colour = col}}};
 
             spheres.push_back(Sphere{.center = vec3(translation[0], translation[1], translation[2]),
                                      .radius = float(radius),
@@ -55,7 +54,31 @@ int main(int argc, char *argv[]) {
             origin = vec3(translation[0], translation[1], translation[2]);
             auto frustum = camera.GetFrustum();
             auto look_at_p = frustum.ComputeLookAtPoint();
-            //look_at = vec3(look_at_p[0], look_at_p[1], look_at_p[2]);
+            look_at = vec3(look_at_p[0], look_at_p[1], look_at_p[2]);
+            dbg(translation, look_at_p);
+        } else if (prim.IsA<pxr::UsdGeomMesh>()) {
+            auto mesh = pxr::UsdGeomMesh(prim);
+            pxr::VtArray<pxr::GfVec3f> points;
+            pxr::VtArray<int> vertex_indices;
+            pxr::VtArray<int> vertex_counts;
+            mesh.GetPointsAttr().Get(&points);
+            mesh.GetFaceVertexIndicesAttr().Get(&vertex_indices);
+            mesh.GetFaceVertexCountsAttr().Get(&vertex_counts);
+
+            bool valid = true;
+            for (auto count : vertex_counts) {
+                if (count != 3) {
+                    printf("Mesh has non-triangle faces: %i\n", count);
+                    valid = false;
+                    break;
+                }
+            }
+            if (!valid) {
+                continue;
+            }
+
+            auto transform = cache.GetLocalToWorldTransform(prim);
+            pxr::GfVec3d translation = transform.ExtractTranslation();
             dbg(translation);
         }
     }

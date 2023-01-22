@@ -10,7 +10,7 @@ struct OutputBuffer {
 
 struct AccumulationBuffer {
     std::vector<float> data;
-    uint64_t num_samples;
+    uint64_t num_samples = 0;
 
     AccumulationBuffer(uint32_t width, uint32_t height);
 

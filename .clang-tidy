@@ -1,5 +1,5 @@
 ---
-Checks:          'bugprone-*,cppcoreguidelines-*,clang-analyzer-*,modernize-*,-cppcoreguidelines-pro-type-union-access,-cppcoreguidelines-avoid-magic-numbers,-modernize-use-trailing-return-type,-modernize-return-braced-init-list,-bugprone-easily-swappable-parameters'
+Checks:          'bugprone-*,cppcoreguidelines-*,clang-analyzer-*,modernize-*,-cppcoreguidelines-pro-type-union-access,-cppcoreguidelines-avoid-magic-numbers,-modernize-use-trailing-return-type,-modernize-return-braced-init-list,-bugprone-easily-swappable-parameters,-cppcoreguidelines-pro-type-member-init,-cppcoreguidelines-prefer-member-initializer'
 WarningsAsErrors: ''
 HeaderFilterRegex: 'src/\w+\.(c|h)pp'
 AnalyzeTemporaryDtors: false

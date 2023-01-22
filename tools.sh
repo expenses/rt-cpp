@@ -1,2 +1,2 @@
-cppclean src && \
-cppcheck --language=c++ src/*
+cppclean src
+cppcheck --enable=all src/*

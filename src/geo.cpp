@@ -1,11 +1,11 @@
-#include "geo.h"
+#include "geo.hpp"
 
 #include <glm/geometric.hpp>
 #include <glm/vec3.hpp>
 #include <optional>
 #include <utility>
 
-#include "util.h"
+#include "util.hpp"
 
 std::optional<Intersection> Sphere::intersect(const Ray &ray) {
     auto oc = ray.o - center;

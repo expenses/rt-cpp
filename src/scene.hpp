@@ -1,6 +1,6 @@
 #pragma once
-#include "geo.h"
-#include "image.h"
+#include "geo.hpp"
+#include "image.hpp"
 
 struct Scene {
     std::vector<Sphere> spheres;

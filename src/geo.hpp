@@ -1,5 +1,5 @@
 #pragma once
-#include "bsdf.h"
+#include "bsdf.hpp"
 #include <optional>
 
 struct Intersection {

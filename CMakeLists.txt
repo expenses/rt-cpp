@@ -20,5 +20,5 @@ target_compile_definitions(rt-cpp PUBLIC DBG_MACRO_NO_WARNING=1)
 # Only for select headers
 target_precompile_headers(
     rt-cpp PRIVATE
-    src/external.h src/util.h src/sampling.h
+    src/external.hpp src/util.hpp src/sampling.hpp
 )

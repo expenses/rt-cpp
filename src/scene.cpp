@@ -1,4 +1,4 @@
-#include "scene.h"
+#include "scene.hpp"
 
 std::optional<std::tuple<Intersection, Bsdf>> Scene::find_intersection(Ray ray, bool find_any) {
     std::optional<std::tuple<Intersection, Bsdf>> closest = std::nullopt;

@@ -1,4 +1,5 @@
 #pragma once
+#include "external.hpp"
 #include <iostream>
 
 inline std::ostream &operator<<(std::ostream &out, const glm::ivec2 &ivec) {

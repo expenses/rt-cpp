@@ -1,7 +1,7 @@
-#include "image.h"
-#include "debugging.h"
-#include "external.h"
-#include "util.h"
+#include "image.hpp"
+#include "debugging.hpp"
+#include "external.hpp"
+#include "util.hpp"
 #include <vector>
 
 using namespace glm;
@@ -25,7 +25,7 @@ Image::Image(const std::string &filename) {
 
     std::vector<float> luminance_values(width * height);
 
-    float theta_scale = 1.0f / float(height - 1) * M_PI;
+    float theta_scale = 1.0 / float(height - 1) * M_PI;
 
     for (int y = 0; y < height; y++) {
         float sin_theta = sin(y * theta_scale);

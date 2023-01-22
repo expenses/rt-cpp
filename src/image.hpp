@@ -1,5 +1,5 @@
 #pragma once
-#include "sampling.h"
+#include "sampling.hpp"
 
 struct Image {
     Image(const std::string &filename);

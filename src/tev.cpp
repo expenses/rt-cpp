@@ -1,4 +1,4 @@
-#include "tev.h"
+#include "tev.hpp"
 
 #include <arpa/inet.h>
 #include <cstdio>
@@ -35,7 +35,7 @@ void TevConnection::send_create(const std::string &image_name, uint32_t width, u
     uint32_t num_channels = channel_names.size();
     uint8_t null_byte = 0;
 
-    uint32_t length = 4 + (1 * 2) + image_name.length() + 1 + (4 * 3);
+    uint32_t length = 4 + (1 * 2) + uint32_t(image_name.length()) + 1 + (4 * 3);
     for (auto &channel_name : channel_names) {
         length += channel_name.length() + 1;
     }
@@ -65,7 +65,7 @@ void TevConnection::send_update(const std::string &image_name, uint32_t x, uint3
     uint32_t channel_count = channel_names.size();
     uint8_t null_byte = 0;
 
-    uint32_t length = 4 + (1 * 2) + image_name.length() + 1 + (4 * 5) + channel_offsets.size() * 8 +
+    uint32_t length = 4 + (1 * 2) + uint32_t(image_name.length()) + 1 + (4 * 5) + channel_offsets.size() * 8 +
                       channel_strides.size() * 8 + data.size() * 4;
     for (auto &channel_name : channel_names) {
         length += channel_name.length() + 1;

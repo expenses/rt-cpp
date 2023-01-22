@@ -1,5 +1,5 @@
-#include "sampling.h"
-#include "debugging.h"
+#include "sampling.hpp"
+#include "debugging.hpp"
 #include <cstdint>
 #include <cstdio>
 
@@ -13,8 +13,7 @@ std::ostream &operator<<(std::ostream &out, const Sample1D &sample) {
     return out;
 }
 
-Distribution1D::Distribution1D() {
-}
+Distribution1D::Distribution1D() = default;
 
 Distribution1D::Distribution1D(std::span<float> func) {
     function.reserve(func.size());
@@ -63,8 +62,7 @@ std::ostream &operator<<(std::ostream &out, const Sample2D &sample) {
     return out;
 }
 
-Distribution2D::Distribution2D() {
-}
+Distribution2D::Distribution2D() = default;
 
 Distribution2D::Distribution2D(std::span<float> image, uint32_t width, uint32_t height) {
     row_distributions.reserve(height);
