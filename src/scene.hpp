@@ -1,10 +1,9 @@
 #pragma once
 #include "geo.hpp"
 #include "image.hpp"
+#include "bsdf.hpp"
 
 struct Scene {
-    std::vector<Sphere> spheres;
+    std::vector<Bsdf> sphere_bsdfs;
     Image environment_map;
-
-    std::optional<std::tuple<Intersection, Bsdf>> find_intersection(Ray ray, bool find_any);
 };

@@ -7,36 +7,23 @@
 
 #include "util.hpp"
 
-std::optional<Intersection> Sphere::intersect(const Ray &ray) {
-    auto oc = ray.o - center;
+Ray::Ray(RTCRayHit embree_ray) {
+    o = vec3(embree_ray.ray.org_x, embree_ray.ray.org_y, embree_ray.ray.org_z);
+    d = vec3(embree_ray.ray.dir_x, embree_ray.ray.dir_y, embree_ray.ray.dir_z);
+    max_t = embree_ray.ray.tfar;
+}
 
-    auto a = dot(ray.d, ray.d);
-    auto b = 2.0 * dot(oc, ray.d);
-    auto c = dot(oc, oc) - radius * radius;
-
-    auto roots = quadratic(a, b, c);
-
-    if (!roots) {
-        return std::nullopt;
-    }
-
-    auto [t_0, t_1] = roots.value();
-
-    if (t_1 <= 0.0 || t_0 > ray.max_t) {
-        return std::nullopt;
-    }
-
-    auto t = t_0;
-
-    if (t_0 <= 0.0) {
-        t = t_1;
-    }
-
-    auto position = ray.o + t * ray.d;
-
-    return Intersection{
-        .t = t,
-        .normal = normalize(position - center),
-        .position = position,
-    };
+RTCRayHit Ray::as_embree() {
+    return RTCRayHit{.ray =
+                         {
+                             .org_x = o.x,
+                             .org_y = o.y,
+                             .org_z = o.z,
+                             .tnear = 0.0,
+                             .dir_x = d.x,
+                             .dir_y = d.y,
+                             .dir_z = d.z,
+                             .tfar = max_t,
+                         },
+                     .hit = {.geomID = RTC_INVALID_GEOMETRY_ID}};
 }

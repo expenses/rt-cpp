@@ -88,3 +88,8 @@ struct Bsdf {
         } conductor;
     } params;
 };
+
+struct Material {
+    Bsdf::Tag tag;
+    OIIO::ustring path;
+};

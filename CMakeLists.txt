@@ -3,18 +3,20 @@ cmake_minimum_required(VERSION 3.25)
 project(rt-cpp)
 
 find_package(OpenEXR REQUIRED)
+find_package(embree REQUIRED)
+find_package(OpenImageIO REQUIRED)
 
-include(external/usd/pxrConfig.cmake)
+include(external/usd2/pxrConfig.cmake)
 
 file(GLOB SRC_FILES src/*.cpp)
 add_executable(rt-cpp ${SRC_FILES})
 
 include_directories(
     external
-    external/usd/include
+    external/usd2/include
 )
 target_compile_features(rt-cpp PUBLIC cxx_std_20)
-target_link_libraries(rt-cpp OpenEXR::OpenEXR ${PXR_LIBRARIES})
+target_link_libraries(rt-cpp OpenEXR::OpenEXR ${PXR_LIBRARIES} embree OpenImageIO::OpenImageIO)
 target_compile_definitions(rt-cpp PUBLIC DBG_MACRO_NO_WARNING=1)
 
 # Only for select headers

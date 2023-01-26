@@ -18,7 +18,7 @@ struct Sample1D {
 std::ostream &operator<<(std::ostream &out, const Sample1D &sample);
 
 struct Distribution1D {
-    Distribution1D();
+    Distribution1D() = default;
 
     Distribution1D(std::span<float> func);
 
@@ -38,7 +38,7 @@ struct Sample2D {
 std::ostream &operator<<(std::ostream &out, const Sample2D &sample);
 
 struct Distribution2D {
-    Distribution2D();
+    Distribution2D() = default;
 
     Distribution2D(std::span<float> image, uint32_t width, uint32_t height);
 

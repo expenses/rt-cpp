@@ -13,8 +13,6 @@ std::ostream &operator<<(std::ostream &out, const Sample1D &sample) {
     return out;
 }
 
-Distribution1D::Distribution1D() = default;
-
 Distribution1D::Distribution1D(std::span<float> func) {
     function.reserve(func.size());
     function.insert(function.begin(), func.begin(), func.end());
@@ -61,8 +59,6 @@ std::ostream &operator<<(std::ostream &out, const Sample2D &sample) {
     out << "{pdf: " << sample.pdf << ", indices: " << sample.indices << ", point: " << sample.point << "}";
     return out;
 }
-
-Distribution2D::Distribution2D() = default;
 
 Distribution2D::Distribution2D(std::span<float> image, uint32_t width, uint32_t height) {
     row_distributions.reserve(height);
