@@ -5,6 +5,7 @@
 
 #include "buffers.hpp"
 #include "debugging.hpp"
+#include "embree_helpers.hpp"
 #include "geo.hpp"
 #include "image.hpp"
 #include "pcg.h"
@@ -16,7 +17,11 @@
 
 using namespace glm;
 
-pxr::GfVec3f pxr_vec3(vec3 vec) {
+vec3 pxr_to_vec3(pxr::GfVec3f vec) {
+    return vec3(vec[0], vec[1], vec[2]);
+}
+
+pxr::GfVec3f vec3_to_pxr(vec3 vec) {
     return pxr::GfVec3f(vec.x, vec.y, vec.z);
 }
 
@@ -24,20 +29,19 @@ float UniformFloat(pcg32_random_t &rng) {
     return pcg32_random_r(&rng) * 0x1p-32f;
 }
 
-void upload_vec3_geometry(RTCGeometry &geometry, std::span<pxr::GfVec3f> points, RTCBufferType type, int slot = 0) {
-    auto buffer = rtcSetNewGeometryBuffer(geometry, type, slot, RTC_FORMAT_FLOAT3, sizeof(pxr::GfVec3f), points.size());
-    memcpy(buffer, points.data(), points.size() * sizeof(pxr::GfVec3f));
-}
-
-void upload_vec2_geometry(RTCGeometry &geometry, std::span<pxr::GfVec2f> points, RTCBufferType type, int slot = 0) {
-    auto buffer = rtcSetNewGeometryBuffer(geometry, type, slot, RTC_FORMAT_FLOAT2, sizeof(pxr::GfVec2f), points.size());
-    memcpy(buffer, points.data(), points.size() * sizeof(pxr::GfVec2f));
-}
-
-std::string resolve_diffuse_material_texture_path(pxr::UsdShadeMaterial& material) {
+std::optional<std::string> resolve_diffuse_material_texture_path(pxr::UsdShadeMaterial &material) {
     auto source = material.ComputeSurfaceSource();
+    if (!source) {
+        return std::nullopt;
+    }
     auto diffuse = source.GetInput(pxr::TfToken("diffuseColor"));
-    source = diffuse.GetConnectedSources()[0].source;
+    auto sources = diffuse.GetConnectedSources();
+
+    if (sources.size() == 0) {
+        return std::nullopt;
+    }
+
+    source = sources[0].source;
     auto texture = source.GetInput(pxr::TfToken("file"));
     pxr::SdfAssetPath path;
     texture.Get(&path);
@@ -65,9 +69,8 @@ int main(int argc, char *argv[]) {
     std::vector<Sphere> spheres;
     std::vector<Bsdf> sphere_bsdfs;
     std::vector<Mesh> meshes;
-    vec3 origin = vec3(-1.0, 0.0, 0.0);
-    vec3 look_at = vec3(0.0, 0.0, 0.0);
-    vec3 up = vec3(0.0, 1.0, 0.0);
+    auto origin = vec3(-1, 0, 0);
+    mat4 view = glm::lookAt(origin, vec3(0), vec3(0, 1, 0));
     float fov = 59.0;
     std::string environment_map_path = "scenes/noon_grass_4k.exr";
 
@@ -85,27 +88,22 @@ int main(int argc, char *argv[]) {
             prim.GetAttribute(pxr::UsdGeomTokensType().primvarsDisplayColor).Get(&display_colours);
             vec3 col = vec3(0.5, 0.5, 0.5);
             if (display_colours.size() > 0) {
-                col = vec3(display_colours[0][0], display_colours[0][1], display_colours[0][2]);
+                col = pxr_to_vec3(display_colours[0]);
             }
 
             auto diffuse = Bsdf{.tag = Bsdf::Tag::Diffuse, .params = Bsdf::Params{.diffuse = {.colour = col}}};
 
-            spheres.push_back(
-                Sphere{.center = vec3(translation[0], translation[1], translation[2]), .radius = float(radius)});
+            spheres.push_back(Sphere{.center = pxr_to_vec3(pxr::GfVec3f(translation)), .radius = float(radius)});
             sphere_bsdfs.push_back(diffuse);
         } else if (prim.IsA<pxr::UsdGeomCamera>()) {
             pxr::GfCamera camera = pxr::UsdGeomCamera(prim).GetCamera(pxr::UsdTimeCode());
             fov = camera.GetFieldOfView(pxr::GfCamera::FOVDirection::FOVHorizontal);
             auto transform = camera.GetTransform();
-            pxr::GfVec3d translation = transform.ExtractTranslation();
-            origin = vec3(translation[0], translation[1], translation[2]); // + vec3(0,5,0);
+            origin = pxr_to_vec3(pxr::GfVec3f(transform.ExtractTranslation()));
             auto frustum = camera.GetFrustum();
-            auto look_at_p = frustum.ComputeLookAtPoint();
-            auto up_p = frustum.ComputeUpVector();
-            look_at = vec3(look_at_p[0], look_at_p[1], look_at_p[2]);
-            up = vec3(up_p[0], up_p[1], up_p[2]);
-            dbg(up_p);
-            dbg(translation, look_at_p);
+            auto look_at = pxr_to_vec3(pxr::GfVec3f(frustum.ComputeLookAtPoint()));
+            auto up = pxr_to_vec3(pxr::GfVec3f(frustum.ComputeUpVector()));
+            view = glm::lookAt(origin, look_at, up);
         } else if (prim.IsA<pxr::UsdGeomMesh>()) {
             auto mesh = pxr::UsdGeomMesh(prim);
             auto primvars = pxr::UsdGeomPrimvarsAPI(prim);
@@ -121,12 +119,28 @@ int main(int argc, char *argv[]) {
             primvars.GetPrimvar(pxr::TfToken("primvars:UVMap")).Get(&uvs);
 
             bool valid = true;
+            auto vertex_offset = 0;
+            std::vector<int> trianglulated_indices;
             for (auto count : vertex_counts) {
-                if (count != 3) {
+                if (count > 4) {
                     printf("Mesh has non-triangle faces: %i\n", count);
                     valid = false;
                     break;
+                } else if (count == 3) {
+                    trianglulated_indices.push_back(vertex_indices[vertex_offset]);
+                    trianglulated_indices.push_back(vertex_indices[vertex_offset + 1]);
+                    trianglulated_indices.push_back(vertex_indices[vertex_offset + 2]);
+                } else if (count == 4) {
+                    trianglulated_indices.push_back(vertex_indices[vertex_offset]);
+                    trianglulated_indices.push_back(vertex_indices[vertex_offset + 1]);
+                    trianglulated_indices.push_back(vertex_indices[vertex_offset + 2]);
+
+                    trianglulated_indices.push_back(vertex_indices[vertex_offset]);
+                    trianglulated_indices.push_back(vertex_indices[vertex_offset + 2]);
+                    trianglulated_indices.push_back(vertex_indices[vertex_offset + 3]);
                 }
+
+                vertex_offset += count;
             }
             if (!valid) {
                 continue;
@@ -145,7 +159,8 @@ int main(int argc, char *argv[]) {
                 indexed_uvs.at(vertex_indices[i]) = uvs[i];
             }
 
-            dbg(uvs.size(), normals.size(), indexed_normals.size(), indexed_uvs.size());
+            dbg(points.size(), uvs.size(), normals.size(), indexed_normals.size(), indexed_uvs.size(),
+                trianglulated_indices.size(), vertex_indices.size());
 
             RTCGeometry triangle_geom = rtcNewGeometry(device, RTC_GEOMETRY_TYPE_TRIANGLE);
 
@@ -154,12 +169,9 @@ int main(int argc, char *argv[]) {
             upload_vec3_geometry(triangle_geom, points, RTC_BUFFER_TYPE_VERTEX);
             upload_vec3_geometry(triangle_geom, indexed_normals, RTC_BUFFER_TYPE_VERTEX_ATTRIBUTE, 0);
             upload_vec2_geometry(triangle_geom, indexed_uvs, RTC_BUFFER_TYPE_VERTEX_ATTRIBUTE, 1);
+            upload_index_buffer(triangle_geom, trianglulated_indices);
 
-            auto buf2 = rtcSetNewGeometryBuffer(triangle_geom, RTC_BUFFER_TYPE_INDEX, 0, RTC_FORMAT_UINT3,
-                                                sizeof(int) * 3, vertex_indices.size() / 3);
-            memcpy(buf2, vertex_indices.data(), vertex_indices.size() * sizeof(int));
-
-            std::vector<int> material_indices(vertex_indices.size(), 0);
+            std::vector<int> material_indices(trianglulated_indices.size(), 0);
 
             auto subsets = pxr::UsdGeomSubset::GetAllGeomSubsets(mesh);
 
@@ -175,23 +187,19 @@ int main(int argc, char *argv[]) {
                     material_indices[i] = subset_id;
                 }
 
-                
-                auto path = resolve_diffuse_material_texture_path(material);
+                auto path = resolve_diffuse_material_texture_path(material).value();
 
-                materials.push_back(Material {
-                    .tag = Bsdf::Tag::Diffuse,
-                    .path = OIIO::ustring(path)
-                });
+                materials.push_back(Material{.tag = Bsdf::Tag::Diffuse, .path = OIIO::ustring(path)});
             }
 
             if (subsets.size() == 0) {
-                auto material =
-                    pxr::UsdShadeMaterialBindingAPI(mesh).ComputeBoundMaterial(pxr::UsdShadeTokens->full);
+                auto material = pxr::UsdShadeMaterialBindingAPI(mesh).ComputeBoundMaterial(pxr::UsdShadeTokens->full);
                 auto path = resolve_diffuse_material_texture_path(material);
-                materials.push_back(Material {
-                    .tag = Bsdf::Tag::Diffuse,
-                    .path = OIIO::ustring(path)
-                });
+                std::optional<OIIO::ustring> oiio_path = std::nullopt;
+                if (path) {
+                    oiio_path = OIIO::ustring(path.value());
+                }
+                materials.push_back(Material{.tag = Bsdf::Tag::Diffuse, .path = oiio_path});
             }
 
             RTCScene mesh_scene = rtcNewScene(device);
@@ -219,7 +227,7 @@ int main(int argc, char *argv[]) {
             auto dome_light = pxr::UsdLuxDomeLight(prim);
             pxr::SdfAssetPath path;
             dome_light.GetTextureFileAttr().Get(&path);
-            //environment_map_path = path.GetResolvedPath();
+            environment_map_path = path.GetResolvedPath();
         }
     }
 
@@ -239,8 +247,7 @@ int main(int argc, char *argv[]) {
     }
     rtcCommitScene(rtscene);
 
-    auto scene = Scene{.sphere_bsdfs = std::move(sphere_bsdfs),
-                       .environment_map = Image(environment_map_path)};
+    auto scene = Scene{.sphere_bsdfs = std::move(sphere_bsdfs), .environment_map = Image(environment_map_path)};
 
     pcg32_random_t rng;
 
@@ -251,38 +258,16 @@ int main(int argc, char *argv[]) {
     std::vector<uint64_t> channel_offsets = {0, 1, 2};
     std::vector<uint64_t> channel_strides = {3, 3, 3};
 
-    const uint32_t width = 256;
-    const uint32_t height = 256;
+    const uint32_t width = 960;
+    const uint32_t height = 540;
 
     auto accum = AccumulationBuffer(width, height);
     auto output = OutputBuffer(width, height);
 
     connection.send_create(image_name, width, height, channel_names);
 
-    auto grey = Bsdf{.tag = Bsdf::Tag::Diffuse, .params = Bsdf::Params{.diffuse = {.colour = vec3(0.5, 0.5, 0.5)}}};
-    auto blue = Bsdf{.tag = Bsdf::Tag::Diffuse, .params = Bsdf::Params{.diffuse = {.colour = vec3(0.3, 0.3, 0.8)}}};
-
-    auto conductor_a =
-        Bsdf{.tag = Bsdf::Tag::Conductor,
-             .params = Bsdf::Params{.conductor = {.colour = vec3(0.5, 0.5, 0.25), .alpha = vec2(0.9, 0.001)}}};
-
-    auto conductor_b =
-        Bsdf{.tag = Bsdf::Tag::Conductor,
-             .params = Bsdf::Params{.conductor = {.colour = vec3(0.5, 0.5, 0.25), .alpha = vec2(0.001, 0.9)}}};
-
-    auto conductor_c =
-        Bsdf{.tag = Bsdf::Tag::Conductor,
-             .params = Bsdf::Params{.conductor = {.colour = vec3(0.5, 0.5, 0.25), .alpha = vec2(0.15, 0.15)}}};
-
-    auto conductor_d =
-        Bsdf{.tag = Bsdf::Tag::Conductor,
-             .params = Bsdf::Params{.conductor = {.colour = vec3(0.5, 0.5, 0.25), .alpha = vec2(0.03, 0.03)}}};
-
-    const mat4 view = lookAt(origin, look_at, up);
-    const mat4 proj = perspective(radians(fov/8), float(width) / float(height), 0.001f, 10000.0f);
-
     const mat4 view_inverse = inverse(view);
-    const mat4 proj_inverse = inverse(proj);
+    const mat4 proj_inverse = inverse(perspective(radians(fov), float(width) / float(height), 0.001f, 10000.0f));
 
     auto start = std::chrono::steady_clock::now();
     bool never_updated = true;
@@ -296,7 +281,6 @@ int main(int argc, char *argv[]) {
     OIIO::TextureOpt opt;
     opt.swrap = OIIO::TextureOpt::Wrap::WrapPeriodic;
     opt.twrap = OIIO::TextureOpt::Wrap::WrapPeriodic;
-    
 
     while (true) {
         rays.clear();
@@ -336,26 +320,27 @@ int main(int argc, char *argv[]) {
                     } else {
                         auto inst_id = rayhit.hit.instID[0];
 
-                        Mesh& mesh = meshes[inst_id];
+                        Mesh &mesh = meshes[inst_id];
 
                         vec3 colour = vec3(1.0, 0.0, 1.0);
 
-                        rtcInterpolate0(rtcGetGeometry(mesh.scene, 0), rayhit.hit.primID, rayhit.hit.u,
-                                        rayhit.hit.v, RTC_BUFFER_TYPE_VERTEX_ATTRIBUTE, 0, &normal.x, 3);
-                        rtcInterpolate0(rtcGetGeometry(mesh.scene, 0), rayhit.hit.primID, rayhit.hit.u,
-                                        rayhit.hit.v, RTC_BUFFER_TYPE_VERTEX_ATTRIBUTE, 1, &uv.x, 2);
+                        rtcInterpolate0(rtcGetGeometry(mesh.scene, 0), rayhit.hit.primID, rayhit.hit.u, rayhit.hit.v,
+                                        RTC_BUFFER_TYPE_VERTEX_ATTRIBUTE, 0, &normal.x, 3);
+                        rtcInterpolate0(rtcGetGeometry(mesh.scene, 0), rayhit.hit.primID, rayhit.hit.u, rayhit.hit.v,
+                                        RTC_BUFFER_TYPE_VERTEX_ATTRIBUTE, 1, &uv.x, 2);
 
-                        auto n = mesh.normal_matrix * pxr::GfVec3f(normal.x, normal.y, normal.z);
-                        normal = vec3(n[0], n[1], n[2]);
-                        
+                        normal = pxr_to_vec3(mesh.normal_matrix * vec3_to_pxr(normalize(normal)));
+
                         if (mesh.materials.size() > 0) {
                             auto material_index = mesh.material_indices[rayhit.hit.primID];
                             auto material = mesh.materials.at(material_index);
-                            tex_sys->texture(material.path, opt, uv.x, uv.y, 0.0, 0.0, 0.0, 0.0, 3, (float*)&colour, nullptr, nullptr);
+                            if (material.path) {
+                                tex_sys->texture(material.path.value(), opt, uv.x, uv.y, 0.0, 0.0, 0.0, 0.0, 3,
+                                                 (float *)&colour, nullptr, nullptr);
+                            }
                         }
 
-                        bsdf = Bsdf{.tag = Bsdf::Tag::Diffuse,
-                                    .params = Bsdf::Params{.diffuse = {.colour = colour}}};
+                        bsdf = Bsdf{.tag = Bsdf::Tag::Diffuse, .params = Bsdf::Params{.diffuse = {.colour = colour}}};
                     }
 
                     auto pos = ray.o + ray.d * ray.max_t;
@@ -376,11 +361,11 @@ int main(int argc, char *argv[]) {
                     }
 
                     if (std::isnan(colour.x) || std::isnan(colour.y) || std::isnan(colour.z)) {
-                        dbg("nan!", pxr_vec3(colour), pxr_vec3(value), pxr_vec3(params.colour), l_dot_n);
+                        dbg("nan!", vec3_to_pxr(colour), vec3_to_pxr(value), vec3_to_pxr(params.colour), l_dot_n);
                     }
 
-                    //colour = vec3(u_deriv.x, u_deriv.y, 0.0);
-                    //colour = vec3(uv.x, uv.y, 0.0);
+                    // colour = vec3(u_deriv.x, u_deriv.y, 0.0);
+                    // colour = vec3(uv.x, uv.y, 0.0);
                 } else {
                     colour = scene.environment_map.sample_env_map(ray.d);
                 }

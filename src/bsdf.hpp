@@ -91,5 +91,5 @@ struct Bsdf {
 
 struct Material {
     Bsdf::Tag tag;
-    OIIO::ustring path;
+    std::optional<OIIO::ustring> path;
 };

@@ -1,4 +1,8 @@
 #pragma once
+#include <pxr/base/gf/camera.h>
+#include <pxr/base/gf/frustum.h>
+#include <pxr/base/gf/matrix3f.h>
+#include <pxr/base/gf/matrix4f.h>
 #include <pxr/usd/usd/prim.h>
 #include <pxr/usd/usd/primRange.h>
 #include <pxr/usd/usd/stage.h>
@@ -11,11 +15,6 @@
 #include <pxr/usd/usdGeom/xformCache.h>
 #include <pxr/usd/usdLux/domeLight.h>
 #include <pxr/usd/usdShade/materialBindingAPI.h>
-#include <pxr/base/gf/camera.h>
-#include <pxr/base/gf/frustum.h>
-#include <pxr/base/gf/matrix3f.h>
-#include <pxr/base/gf/matrix4f.h>
-
 
 #include <OpenImageIO/imageio.h>
 #include <OpenImageIO/texture.h>

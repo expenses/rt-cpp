@@ -1,7 +1,7 @@
 #pragma once
+#include "bsdf.hpp"
 #include "geo.hpp"
 #include "image.hpp"
-#include "bsdf.hpp"
 
 struct Scene {
     std::vector<Bsdf> sphere_bsdfs;
