@@ -76,6 +76,7 @@ struct Bsdf {
     {
         Diffuse,
         Conductor,
+        Emissive,
     } tag;
 
     union Params {
@@ -86,6 +87,9 @@ struct Bsdf {
             vec3 colour;
             vec2 alpha;
         } conductor;
+        struct Emissive {
+            float radiance;
+        } emissive;
     } params;
 };
 

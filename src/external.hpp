@@ -33,6 +33,8 @@
 
 #include <embree3/rtcore.h>
 
+#include <tbb/parallel_for.h>
+
 #include <chrono>
 #include <fstream>
 #include <random>

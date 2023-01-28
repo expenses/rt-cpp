@@ -6,13 +6,15 @@
 
 using namespace glm;
 
-Image::Image(const std::string &filename) {
+Image::Image(const std::string &filename, OIIO::TextureSystem &texture_system)
+    : texture_system(texture_system), path(OIIO::ustring(filename)) {
     Imf::InputFile file(filename.data());
     const auto header = file.header();
     const auto data_window = header.dataWindow();
     const auto dimensions = data_window.max;
-    width = dimensions.x + 1;
-    height = dimensions.y + 1;
+    auto width = dimensions.x + 1;
+    auto height = dimensions.y + 1;
+    std::vector<vec3> rgb;
     rgb.resize(width * height);
     Imf::FrameBuffer framebuffer;
     const auto row_stride = sizeof(float) * 3 * width;
@@ -40,23 +42,20 @@ Image::Image(const std::string &filename) {
 }
 
 const vec3 Image::sample(vec2 uv) {
-    if (uv.x < 0.0) {
-        uv.x += 1.0;
-    }
+    OIIO::TextureOpt opt;
+    opt.swrap = OIIO::TextureOpt::Wrap::WrapPeriodic;
+    opt.twrap = OIIO::TextureOpt::Wrap::WrapClamp;
 
-    auto x = uint32_t((uv.x * width));
-    auto y = uint32_t((uv.y * height));
-    x = min(x, width - 1);
-    y = min(y, height - 1);
-
-    return rgb[y * width + x];
+    vec3 sample;
+    texture_system.texture(path, opt, uv.x, uv.y, 0.0, 0.0, 0.0, 0.0, 3, (float *)&sample, nullptr, nullptr);
+    return sample;
 }
 
 const vec3 Image::sample_env_map(vec3 dir) {
     return sample(vec2(atan2(-dir.z, -dir.x) / (2.0 * M_PI), acos(dir.y) / M_PI));
 }
 
-const std::pair<vec3, vec3> Image::sample_pdf(vec2 rng) {
+const std::tuple<float, vec2, vec3> Image::sample_pdf(vec2 rng) {
     auto dist_sample = distribution.sample(rng);
 
     auto theta = dist_sample.point.y * M_PI;
@@ -65,11 +64,11 @@ const std::pair<vec3, vec3> Image::sample_pdf(vec2 rng) {
 
     float pdf = dist_sample.pdf / (2.0 * M_PI * M_PI * sin(theta));
 
-    auto value = sample(dist_sample.point) / pdf;
+    // auto value = sample(dist_sample.point) / pdf;
 
     auto direction = vec3(sin(theta) * cos(phi), cos(theta), sin(theta) * sin(phi));
     direction.z = -direction.z;
     direction.x = -direction.x;
 
-    return std::make_pair(value, direction);
+    return std::make_tuple(pdf, dist_sample.point, direction);
 }
