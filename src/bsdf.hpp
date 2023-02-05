@@ -30,12 +30,12 @@ inline float tan_2_theta(vec3 w) {
 
 inline float cos_phi(vec3 w) {
     auto sin_theta_ = sin_theta(w);
-    return (sin_theta_ == 0) ? 1 : clamp(w.x / sin_theta_, -1.0f, 1.0f);
+    return (sin_theta_ == 0.0f) ? 1.0f : clamp(w.x / sin_theta_, -1.0f, 1.0f);
 }
 
 inline float sin_phi(vec3 w) {
     auto sin_theta_ = sin_theta(w);
-    return (sin_theta_ == 0) ? 0 : clamp(w.y / sin_theta_, -1.0f, 1.0f);
+    return (sin_theta_ == 0.0f) ? 0.0f : clamp(w.y / sin_theta_, -1.0f, 1.0f);
 }
 
 inline float cos_2_phi(vec3 w) {
@@ -53,7 +53,7 @@ struct TrowbridgeReitzDistribution {
         float tan_2_theta_ = tan_2_theta(normal);
 
         if (std::isinf(tan_2_theta_)) {
-            return 0;
+            return 0.0f;
         }
 
         auto cos_4_theta = cos_2_theta(normal) * cos_2_theta(normal);
@@ -62,7 +62,7 @@ struct TrowbridgeReitzDistribution {
 
         auto e = (cos_2_phi(normal) / alpha_2.x + sin_2_phi(normal) / alpha_2.y) * tan_2_theta_;
 
-        return 1.0f / (M_PI * alpha.x * alpha.y * cos_4_theta * (1 + e) * (1 + e));
+        return 1.0f / (float(M_PI) * alpha.x * alpha.y * cos_4_theta * (1.0f + e) * (1.0f + e));
     }
 };
 

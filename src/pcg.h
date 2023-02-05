@@ -1,5 +1,6 @@
 // *Really* minimal PCG32 code / (c) 2014 M.E. O'Neill / pcg-random.org
 // Licensed under Apache License 2.0 (NO WARRANTY, etc. see website)
+#pragma clang diagnostic ignored "-Wshorten-64-to-32"
 
 typedef struct {
     uint64_t state;

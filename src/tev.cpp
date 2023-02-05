@@ -20,7 +20,7 @@ TevConnection::TevConnection() {
         .sin_family = AF_INET, .sin_port = htons(14158), .sin_addr = {.s_addr = inet_addr("127.0.0.1") }
     };
 
-    auto connection_result = connect(socket_fd, (struct sockaddr *)&ip_address, sizeof(ip_address));
+    auto connection_result = connect(socket_fd, reinterpret_cast<sockaddr *>(&ip_address), sizeof(ip_address));
 
     if (connection_result < 0) {
         printf("connecting failed with %i\n", connection_result);
@@ -32,7 +32,7 @@ void TevConnection::send_create(const std::string &image_name, uint32_t width, u
                                 const std::span<std::string> channel_names) {
     uint8_t packet_type = 4;
     uint8_t grab_focus = 0;
-    uint32_t num_channels = channel_names.size();
+    uint32_t num_channels = uint32_t(channel_names.size());
     uint8_t null_byte = 0;
 
     uint32_t length = 4 + (1 * 2) + uint32_t(image_name.length()) + 1 + (4 * 3);
@@ -62,13 +62,13 @@ void TevConnection::send_update(const std::string &image_name, uint32_t x, uint3
                                 std::span<uint64_t> channel_strides, std::span<float> data) {
     uint8_t packet_type = 6;
     uint8_t grab_focus = 0;
-    uint32_t channel_count = channel_names.size();
+    uint32_t channel_count = uint32_t(channel_names.size());
     uint8_t null_byte = 0;
 
-    uint32_t length = 4 + (1 * 2) + uint32_t(image_name.length()) + 1 + (4 * 5) + channel_offsets.size() * 8 +
-                      channel_strides.size() * 8 + data.size() * 4;
+    uint32_t length = 4 + (1 * 2) + uint32_t(image_name.length()) + 1 + (4 * 5) + uint32_t(channel_offsets.size()) * 8 +
+                      uint32_t(channel_strides.size()) * 8 + uint32_t(data.size()) * 4;
     for (auto &channel_name : channel_names) {
-        length += channel_name.length() + 1;
+        length += uint32_t(channel_name.length()) + 1;
     }
 
     write(socket_fd, &length, sizeof(length));

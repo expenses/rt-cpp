@@ -1,10 +1,10 @@
 
-void upload_vec3_geometry(RTCGeometry &geometry, std::span<pxr::GfVec3f> points, RTCBufferType type, int slot = 0) {
+void upload_vec3_geometry(RTCGeometry &geometry, std::span<pxr::GfVec3f> points, RTCBufferType type, uint slot = 0) {
     auto buffer = rtcSetNewGeometryBuffer(geometry, type, slot, RTC_FORMAT_FLOAT3, sizeof(pxr::GfVec3f), points.size());
     memcpy(buffer, points.data(), points.size() * sizeof(pxr::GfVec3f));
 }
 
-void upload_vec2_geometry(RTCGeometry &geometry, std::span<pxr::GfVec2f> points, RTCBufferType type, int slot = 0) {
+void upload_vec2_geometry(RTCGeometry &geometry, std::span<pxr::GfVec2f> points, RTCBufferType type, uint slot = 0) {
     auto buffer = rtcSetNewGeometryBuffer(geometry, type, slot, RTC_FORMAT_FLOAT2, sizeof(pxr::GfVec2f), points.size());
     memcpy(buffer, points.data(), points.size() * sizeof(pxr::GfVec2f));
 }

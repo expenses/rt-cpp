@@ -24,3 +24,9 @@ target_precompile_headers(
     rt-cpp PRIVATE
     src/external.hpp src/util.hpp src/sampling.hpp
 )
+
+target_compile_options(rt-cpp PRIVATE
+    $<$<OR:$<CXX_COMPILER_ID:Clang>,$<CXX_COMPILER_ID:AppleClang>,$<CXX_COMPILER_ID:GNU>>:
+        -Weverything -Wno-c++98-compat -Wno-pre-c++20-compat-pedantic -Wno-c++98-compat-pedantic -Wno-shadow-field-in-constructor -Wno-shadow -Wno-missing-prototypes -Wno-header-hygiene -Wno-padded
+    >
+)

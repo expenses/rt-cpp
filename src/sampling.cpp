@@ -38,8 +38,8 @@ Distribution1D::Distribution1D(std::span<float> func) {
 
 Sample1D Distribution1D::sample(float rng) {
     const auto pointer = lower_bound(cdf.begin(), cdf.end(), rng);
-    const int upper_index = std::max(std::distance(cdf.begin(), pointer), 1l);
-    const int lower_index = upper_index - 1;
+    const size_t upper_index = size_t(std::max(std::distance(cdf.begin(), pointer), 1l));
+    const size_t lower_index = upper_index - 1;
 
     // Because the integral is equivalent of the average of each piece of
     // the function, the pdf will be >1 for higher-than-average values and
@@ -50,9 +50,9 @@ Sample1D Distribution1D::sample(float rng) {
     float offset_from_index = rng - cdf[lower_index];
     offset_from_index /= (cdf[upper_index] - cdf[lower_index]);
 
-    const auto point = (float(lower_index) + offset_from_index) / function.size();
+    const auto point = (float(lower_index) + offset_from_index) / float(function.size());
 
-    return Sample1D{.index = lower_index, .pdf = pdf, .point = point};
+    return Sample1D{.index = int(lower_index), .pdf = pdf, .point = point};
 }
 
 std::ostream &operator<<(std::ostream &out, const Sample2D &sample) {
@@ -71,11 +71,11 @@ Distribution2D::Distribution2D(std::span<float> image, uint32_t width, uint32_t 
     }
 
     main_distribution = Distribution1D(row_integrals);
-};
+}
 
 Sample2D Distribution2D::sample(vec2 rng) {
     Sample1D row_sample = main_distribution.sample(rng.x);
-    Sample1D col_sample = row_distributions[row_sample.index].sample(rng.y);
+    Sample1D col_sample = row_distributions[size_t(row_sample.index)].sample(rng.y);
 
     return Sample2D{.pdf = row_sample.pdf * col_sample.pdf,
                     .indices = ivec2(col_sample.index, row_sample.index),

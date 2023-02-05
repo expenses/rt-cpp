@@ -49,7 +49,7 @@ std::optional<Mesh> load_mesh(pxr::UsdPrim &prim, MeshContext &context) {
     primvars.GetPrimvar(pxr::TfToken("primvars:UVMap")).Get(&uvs);
 
     bool valid = true;
-    auto vertex_offset = 0;
+    size_t vertex_offset = 0;
     std::vector<int> trianglulated_indices;
     for (auto count : vertex_counts) {
         if (count > 4) {
@@ -69,20 +69,20 @@ std::optional<Mesh> load_mesh(pxr::UsdPrim &prim, MeshContext &context) {
             trianglulated_indices.push_back(vertex_indices[vertex_offset + 3]);
         }
 
-        vertex_offset += count;
+        vertex_offset += size_t(count);
     }
 
     // Blender exported normals don't seem to be indexed??
     std::vector<pxr::GfVec3f> indexed_normals;
     indexed_normals.resize(points.size());
-    for (int i = 0; i < normals.size(); i++) {
-        indexed_normals.at(vertex_indices[i]) = normals[i];
+    for (size_t i = 0; i < normals.size(); i++) {
+        indexed_normals.at(size_t(vertex_indices[i])) = normals[i];
     }
 
     std::vector<pxr::GfVec2f> indexed_uvs;
     indexed_uvs.resize(points.size());
-    for (int i = 0; i < uvs.size(); i++) {
-        indexed_uvs.at(vertex_indices[i]) = uvs[i];
+    for (size_t i = 0; i < uvs.size(); i++) {
+        indexed_uvs.at(size_t(vertex_indices[i])) = uvs[i];
     }
 
     /*dbg(points.size(), uvs.size(), normals.size(), indexed_normals.size(), indexed_uvs.size(),
@@ -103,14 +103,14 @@ std::optional<Mesh> load_mesh(pxr::UsdPrim &prim, MeshContext &context) {
 
     std::vector<Material> materials;
 
-    for (int subset_id = 0; subset_id < subsets.size(); subset_id++) {
+    for (size_t subset_id = 0; subset_id < subsets.size(); subset_id++) {
         auto material =
             pxr::UsdShadeMaterialBindingAPI(subsets[subset_id]).ComputeBoundMaterial(pxr::UsdShadeTokens->full);
         pxr::VtArray<int> subset_indices;
         subsets[subset_id].GetIndicesAttr().Get(&subset_indices);
 
         for (auto i : subset_indices) {
-            material_indices[i] = subset_id;
+            material_indices[size_t(i)] = int(subset_id);
         }
 
         std::optional<OIIO::ustring> oiio_path = std::nullopt;

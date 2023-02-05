@@ -30,18 +30,23 @@ struct CustomAttributes {
 
     vec3 radiance = vec3(0);
 
-    CustomAttributes(pxr::UsdPrim& prim) {
+    CustomAttributes(pxr::UsdPrim &prim) {
         pxr::GfVec3f radiance_pxr = pxr::GfVec3f(0);
         prim.GetAttribute(RADIANCE).Get(&radiance_pxr);
         radiance = pxr_to_vec3(radiance_pxr);
     }
 };
 
-float UniformFloat(pcg32_random_t &rng) {
-    return pcg32_random_r(&rng) * 0x1p-32f;
+static float UniformFloat(pcg32_random_t &rng) {
+    return float(pcg32_random_r(&rng)) * 0x1p-32f;
 }
 
 int main(int argc, char *argv[]) {
+    if (argc != 2) {
+        printf("Expected 1 param, got %i\n", argc - 1);
+        return -1;
+    }
+
     OIIO::TextureSystem &tex_sys = *OIIO::TextureSystem::create();
     // default: 1024
     tex_sys.attribute("max_memory_MB", 8096.0f);
@@ -50,7 +55,7 @@ int main(int argc, char *argv[]) {
 
     auto texture_path = OIIO::ustring("scenes/textures/7268504077753552595.jpg");
 
-    RTCDevice device = rtcNewDevice(NULL);
+    RTCDevice device = rtcNewDevice(nullptr);
     RTCScene rtscene = rtcNewScene(device);
 
     pxr::UsdStageRefPtr stage = pxr::UsdStage::Open(argv[1]);
@@ -86,7 +91,8 @@ int main(int argc, char *argv[]) {
             Bsdf bsdf;
 
             if (custom_attributes.radiance != vec3(0.0)) {
-                bsdf = Bsdf{.tag = Bsdf::Tag::Emissive, .params = Bsdf::Params{.emissive = {.radiance = custom_attributes.radiance}}};
+                bsdf = Bsdf{.tag = Bsdf::Tag::Emissive,
+                            .params = Bsdf::Params{.emissive = {.radiance = custom_attributes.radiance}}};
             } else {
                 bsdf = Bsdf{.tag = Bsdf::Tag::Diffuse, .params = Bsdf::Params{.diffuse = {.colour = col}}};
             }
@@ -116,8 +122,9 @@ int main(int argc, char *argv[]) {
             // environment_map_path = path.GetResolvedPath();
         } else {
             auto string = prim.GetTypeName();
-            if (string == "Xform" || string == "Shader" || string == "Material" || string == "Scope" || string == "GeomSubset" || string == "") {
-            // Ignored.
+            if (string == "Xform" || string == "Shader" || string == "Material" || string == "Scope" ||
+                string == "GeomSubset" || string == "") {
+                // Ignored.
             } else {
                 dbg(prim.GetName(), prim.GetTypeName());
             }
@@ -131,8 +138,8 @@ int main(int argc, char *argv[]) {
     if (spheres.size() > 0) {
         RTCGeometry sphere_geom = rtcNewGeometry(device, RTC_GEOMETRY_TYPE_SPHERE_POINT);
 
-        Sphere *vb = (Sphere *)rtcSetNewGeometryBuffer(sphere_geom, RTC_BUFFER_TYPE_VERTEX, 0, RTC_FORMAT_FLOAT4,
-                                                       sizeof(Sphere), spheres.size());
+        Sphere *vb = reinterpret_cast<Sphere *>(rtcSetNewGeometryBuffer(
+            sphere_geom, RTC_BUFFER_TYPE_VERTEX, 0, RTC_FORMAT_FLOAT4, sizeof(Sphere), spheres.size()));
 
         memcpy(vb, spheres.data(), spheres.size() * sizeof(Sphere));
 
@@ -175,19 +182,19 @@ int main(int argc, char *argv[]) {
     int num_shadow_rays = 10;
 
     while (true) {
-        tbb::parallel_for(tbb::blocked_range<int>(0, height), [&](tbb::blocked_range<int> y_range) {
+        tbb::parallel_for(tbb::blocked_range<size_t>(0, size_t(height)), [&](tbb::blocked_range<size_t> y_range) {
             RTCIntersectContext context;
             context.flags = RTC_INTERSECT_CONTEXT_FLAG_COHERENT;
             rtcInitIntersectContext(&context);
 
-            for (int y = y_range.begin(); y < y_range.end(); y++) {
-                for (int x = 0; x < width; x++) {
+            for (size_t y = y_range.begin(); y < y_range.end(); y++) {
+                for (size_t x = 0; x < width; x++) {
                     const float u = (float(x) + UniformFloat(rng)) / width;
                     const float v = (float(y) + UniformFloat(rng)) / height;
 
-                    auto target = proj_inverse * vec4(u * 2.0 - 1.0, v * -2.0 + 1.0, 1.0, 1.0);
+                    auto target = proj_inverse * vec4(u * 2.0f - 1.0f, v * -2.0f + 1.0f, 1.0f, 1.0f);
                     auto local_direction = normalize(vec3(target));
-                    auto direction = normalize(vec3(view_inverse * vec4(local_direction, 0.0)));
+                    auto direction = normalize(vec3(view_inverse * vec4(local_direction, 0.0f)));
 
                     auto ray = Ray{origin, direction, 10000.0f};
 
@@ -222,10 +229,10 @@ int main(int argc, char *argv[]) {
 
                             if (mesh.materials.size() > 0) {
                                 auto material_index = mesh.material_indices[rayhit.hit.primID];
-                                auto material = mesh.materials.at(material_index);
+                                auto material = mesh.materials.at(size_t(material_index));
                                 if (material.path) {
                                     tex_sys.texture(material.path.value(), opt, uv.x, uv.y, 0.0, 0.0, 0.0, 0.0, 3,
-                                                    (float *)&colour, nullptr, nullptr);
+                                                    reinterpret_cast<float *>(&colour), nullptr, nullptr);
                                 }
                             }
 
@@ -251,14 +258,14 @@ int main(int argc, char *argv[]) {
                                     continue;
                                 }*/
 
-                                auto ray = Ray{pos + direction * vec3(0.0001), direction, 10000.0f}.as_embree();
+                                auto ray = Ray{pos + direction * vec3(0.0001f), direction, 10000.0f}.as_embree();
 
                                 rtcIntersect1(rtscene, &context, &ray);
 
                                 if (sphere_geometry != RTC_INVALID_GEOMETRY_ID && ray.hit.geomID == sphere_geometry) {
                                     auto bsdf = scene.sphere_bsdfs[ray.hit.primID];
                                     if (bsdf.tag == Bsdf::Tag::Emissive) {
-                                        colour += bsdf.params.emissive.radiance * vec3(1.0 / M_PI);
+                                        colour += bsdf.params.emissive.radiance * vec3(1.0f / float(M_PI));
                                     }
                                 }
 
@@ -290,7 +297,7 @@ int main(int argc, char *argv[]) {
                         // colour = scene.environment_map.sample_env_map(ray.d);
                     }
 
-                    auto offset = (y * width + x) * 3;
+                    size_t offset = (y * width + x) * 3;
                     accum.data[offset + 0] += colour.x;
                     accum.data[offset + 1] += colour.y;
                     accum.data[offset + 2] += colour.z;
