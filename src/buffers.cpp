@@ -9,7 +9,7 @@ AccumulationBuffer::AccumulationBuffer(uint32_t width, uint32_t height)
 }
 
 void AccumulationBuffer::update_output(OutputBuffer &output) {
-    for (int i = 0; i < data.size(); i++) {
+    for (size_t i = 0; i < data.size(); i++) {
         output.data[i] = data[i] / float(num_samples);
     }
 }

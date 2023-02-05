@@ -25,6 +25,18 @@ pxr::GfVec3f vec3_to_pxr(vec3 vec) {
     return pxr::GfVec3f(vec.x, vec.y, vec.z);
 }
 
+struct CustomAttributes {
+    const pxr::TfToken RADIANCE = pxr::TfToken("custom_radiance");
+
+    vec3 radiance = vec3(0);
+
+    CustomAttributes(pxr::UsdPrim& prim) {
+        pxr::GfVec3f radiance_pxr = pxr::GfVec3f(0);
+        prim.GetAttribute(RADIANCE).Get(&radiance_pxr);
+        radiance = pxr_to_vec3(radiance_pxr);
+    }
+};
+
 float UniformFloat(pcg32_random_t &rng) {
     return pcg32_random_r(&rng) * 0x1p-32f;
 }
@@ -69,14 +81,12 @@ int main(int argc, char *argv[]) {
                 col = pxr_to_vec3(display_colours[0]);
             }
 
-            float radiance;
-            prim.GetAttribute(pxr::TfToken("radiance")).Get(&radiance);
-            dbg(radiance);
+            CustomAttributes custom_attributes = CustomAttributes(prim);
 
             Bsdf bsdf;
 
-            if (radiance > 0.0f) {
-                bsdf = Bsdf{.tag = Bsdf::Tag::Emissive, .params = Bsdf::Params{.emissive = {.radiance = radiance}}};
+            if (custom_attributes.radiance != vec3(0.0)) {
+                bsdf = Bsdf{.tag = Bsdf::Tag::Emissive, .params = Bsdf::Params{.emissive = {.radiance = custom_attributes.radiance}}};
             } else {
                 bsdf = Bsdf{.tag = Bsdf::Tag::Diffuse, .params = Bsdf::Params{.diffuse = {.colour = col}}};
             }
@@ -104,6 +114,13 @@ int main(int argc, char *argv[]) {
             pxr::SdfAssetPath path;
             dome_light.GetTextureFileAttr().Get(&path);
             // environment_map_path = path.GetResolvedPath();
+        } else {
+            auto string = prim.GetTypeName();
+            if (string == "Xform" || string == "Shader" || string == "Material" || string == "Scope" || string == "GeomSubset" || string == "") {
+            // Ignored.
+            } else {
+                dbg(prim.GetName(), prim.GetTypeName());
+            }
         }
     }
 
@@ -137,8 +154,8 @@ int main(int argc, char *argv[]) {
     std::vector<uint64_t> channel_offsets = {0, 1, 2};
     std::vector<uint64_t> channel_strides = {3, 3, 3};
 
-    const uint32_t width = 1920/4;
-    const uint32_t height = 1080/4;
+    const uint32_t width = 1920 / 8;
+    const uint32_t height = 1080 / 8;
 
     auto accum = AccumulationBuffer(width, height);
     auto output = OutputBuffer(width, height);
@@ -228,25 +245,22 @@ int main(int argc, char *argv[]) {
                                 /*auto [pdf, sample_uv, direction] =
                                     scene.environment_map.sample_pdf(vec2(UniformFloat(rng), UniformFloat(rng)));*/
 
-                                //auto l_dot_n = std::max(dot(direction, normal), 0.0f);
+                                // auto l_dot_n = std::max(dot(direction, normal), 0.0f);
 
                                 /*if (l_dot_n == 0.0f) {
                                     continue;
                                 }*/
 
-                                
-                                auto ray =
-                                    Ray{pos + direction * vec3(0.0001), direction, 10000.0f}.as_embree();
+                                auto ray = Ray{pos + direction * vec3(0.0001), direction, 10000.0f}.as_embree();
 
                                 rtcIntersect1(rtscene, &context, &ray);
-                                
-                                if (ray.hit.geomID == sphere_geometry) {
-                                    auto bsdf = scene.sphere_bsdfs[ray.hit.primID];
-                                    //if (bsdf.tag == Bsdf::Tag::Emissive) {
-                                        colour += vec3(bsdf.params.emissive.radiance) * vec3(1.0 / M_PI);
-                                    //}
-                                }
 
+                                if (sphere_geometry != RTC_INVALID_GEOMETRY_ID && ray.hit.geomID == sphere_geometry) {
+                                    auto bsdf = scene.sphere_bsdfs[ray.hit.primID];
+                                    if (bsdf.tag == Bsdf::Tag::Emissive) {
+                                        colour += bsdf.params.emissive.radiance * vec3(1.0 / M_PI);
+                                    }
+                                }
 
                                 /*
                                 rtcOccluded1(rtscene, &context, &shadow_ray);
@@ -284,7 +298,7 @@ int main(int argc, char *argv[]) {
             }
         });
 
-        accum.num_samples ++;
+        accum.num_samples++;
 
         auto end = std::chrono::steady_clock::now();
         std::chrono::duration<double> elapsed_seconds = end - start;

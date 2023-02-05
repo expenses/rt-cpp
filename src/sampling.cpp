@@ -25,7 +25,7 @@ Distribution1D::Distribution1D(std::span<float> func) {
     // The function's domain is split over n pieces so we divide by that:
     // https://www.pbr-book.org/3ed-2018/Monte_Carlo_Integration/Sampling_Random_Variables#x1-Example:Piecewise-Constant1DFunctions.
     // This also results in the integral being the average of each piece.
-    for (int i = 1; i < n + 1; i++) {
+    for (size_t i = 1; i < n + 1; i++) {
         cdf[i] = cdf[i - 1] + function[i - 1] / float(n);
     }
 
@@ -64,7 +64,7 @@ Distribution2D::Distribution2D(std::span<float> image, uint32_t width, uint32_t 
     row_distributions.reserve(height);
     std::vector<float> row_integrals(height, 0.0);
 
-    for (int y = 0; y < height; y++) {
+    for (size_t y = 0; y < height; y++) {
         std::span<float> row_span = {image.data() + y * width, width};
         row_distributions.push_back(Distribution1D(row_span));
         row_integrals[y] = row_distributions[y].function_integral;

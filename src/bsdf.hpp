@@ -88,7 +88,7 @@ struct Bsdf {
             vec2 alpha;
         } conductor;
         struct Emissive {
-            float radiance;
+            vec3 radiance;
         } emissive;
     } params;
 };
