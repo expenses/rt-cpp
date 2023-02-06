@@ -55,7 +55,8 @@ const vec3 Image::sample(vec2 uv) {
 }
 
 const vec3 Image::sample_env_map(vec3 dir) {
-    return sample(vec2(atan2(-dir.z, -dir.x) / float(2.0 * M_PI), acos(dir.y) / float(M_PI)));
+    auto uv = vec2(atan2(-dir.z, -dir.x) / float(2.0 * M_PI), acos(dir.y) / float(M_PI));
+    return sample(uv);
 }
 
 const std::tuple<float, vec2, vec3> Image::sample_pdf(vec2 rng) {

@@ -1,9 +1,10 @@
 #pragma once
 #include "external.hpp"
+//#include "ggx.hpp"
 #include <cmath>
 
 using namespace glm;
-
+/*
 inline float cos_theta(vec3 w) {
     return w.z;
 }
@@ -69,27 +70,28 @@ struct TrowbridgeReitzDistribution {
 struct MicrofacetReflection {
     TrowbridgeReitzDistribution distribution;
 };
-
+*/
 // Use a tagged enum beacuse std::variant uses vtables :(
 struct Bsdf {
     enum Tag
     {
         Diffuse,
-        Conductor,
         Emissive,
+        Reflective,
+        Mirror
     } tag;
 
     union Params {
         struct Diffuse {
             vec3 colour;
         } diffuse;
-        struct Conductor {
-            vec3 colour;
-            vec2 alpha;
-        } conductor;
         struct Emissive {
             vec3 radiance;
         } emissive;
+        struct Mirror {
+            vec3 colour;
+        } mirror;
+        //BsdfData reflective;
     } params;
 };
 
@@ -97,3 +99,8 @@ struct Material {
     Bsdf::Tag tag;
     std::optional<OIIO::ustring> path;
 };
+
+inline vec3 eval_diffuse(Bsdf::Params::Diffuse params, vec3 light_in, vec3 normal) {
+    auto inv_pi = vec3(1.0f / float(M_PI));
+    return params.colour * inv_pi * std::max(dot(light_in, normal), 0.0f);
+}

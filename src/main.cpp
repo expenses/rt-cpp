@@ -17,23 +17,23 @@
 
 using namespace glm;
 
-vec3 pxr_to_vec3(pxr::GfVec3f vec) {
-    return vec3(vec[0], vec[1], vec[2]);
-}
-
-pxr::GfVec3f vec3_to_pxr(vec3 vec) {
-    return pxr::GfVec3f(vec.x, vec.y, vec.z);
-}
-
 struct CustomAttributes {
     const pxr::TfToken RADIANCE = pxr::TfToken("custom_radiance");
+    const pxr::TfToken MIRROR_COLOUR = pxr::TfToken("custom_mirror_colour");
 
     vec3 radiance = vec3(0);
+    vec3 mirror_colour = vec3(0);
 
     CustomAttributes(pxr::UsdPrim &prim) {
         pxr::GfVec3f radiance_pxr = pxr::GfVec3f(0);
         prim.GetAttribute(RADIANCE).Get(&radiance_pxr);
         radiance = pxr_to_vec3(radiance_pxr);
+        
+        pxr::GfVec3f mirror_colour_pxr = pxr::GfVec3f(0);
+        prim.GetAttribute(MIRROR_COLOUR).Get(&mirror_colour_pxr);
+        dbg(mirror_colour_pxr);
+        mirror_colour = pxr_to_vec3(mirror_colour_pxr);
+        
     }
 };
 
@@ -56,25 +56,24 @@ int main(int argc, char *argv[]) {
     auto texture_path = OIIO::ustring("scenes/textures/7268504077753552595.jpg");
 
     RTCDevice device = rtcNewDevice(nullptr);
-    RTCScene rtscene = rtcNewScene(device);
+
+    Scene scene;
+    scene.embree_scene = rtcNewScene(device);
 
     pxr::UsdStageRefPtr stage = pxr::UsdStage::Open(argv[1]);
     pxr::UsdGeomXformCache cache;
 
     std::vector<Sphere> spheres;
-    std::vector<Bsdf> sphere_bsdfs;
-    std::vector<Mesh> meshes;
     auto origin = vec3(-10, 0, -10);
     mat4 view = glm::lookAt(origin, vec3(0), vec3(0, 1, 0));
     float fov = 59.0;
-    std::string environment_map_path = "scenes/noon_grass_4k.exr";
 
     for (pxr::UsdPrim prim : pxr::UsdPrimRange::Stage(stage)) {
         if (prim.IsA<pxr::UsdGeomSphere>()) {
-            auto sphere = pxr::UsdGeomSphere(prim);
+            auto usd_sphere = pxr::UsdGeomSphere(prim);
 
             double radius;
-            sphere.GetRadiusAttr().Get(&radius);
+            usd_sphere.GetRadiusAttr().Get(&radius);
 
             auto transform = cache.GetLocalToWorldTransform(prim);
             pxr::GfVec3d translation = transform.ExtractTranslation();
@@ -89,37 +88,46 @@ int main(int argc, char *argv[]) {
             CustomAttributes custom_attributes = CustomAttributes(prim);
 
             Bsdf bsdf;
+            Sphere sphere = Sphere{.center = pxr_to_vec3(pxr::GfVec3f(translation)), .radius = float(radius)};
+            spheres.push_back(sphere);
 
             if (custom_attributes.radiance != vec3(0.0)) {
                 bsdf = Bsdf{.tag = Bsdf::Tag::Emissive,
                             .params = Bsdf::Params{.emissive = {.radiance = custom_attributes.radiance}}};
+            } else if (custom_attributes.mirror_colour != vec3(0.0)) {
+                bsdf = Bsdf{.tag = Bsdf::Tag::Mirror, .params = Bsdf::Params{.mirror = {.colour = custom_attributes.mirror_colour}}};
             } else {
                 bsdf = Bsdf{.tag = Bsdf::Tag::Diffuse, .params = Bsdf::Params{.diffuse = {.colour = col}}};
             }
 
-            spheres.push_back(Sphere{.center = pxr_to_vec3(pxr::GfVec3f(translation)), .radius = float(radius)});
-            sphere_bsdfs.push_back(bsdf);
+            scene.sphere_bsdfs.push_back(bsdf);
+
+            if (bsdf.tag == Bsdf::Tag::Emissive) {
+                scene.emitters.sphere_emitters.push_back(SphereEmitter {
+                    .sphere = sphere,
+                    .index = scene.sphere_bsdfs.size() - 1
+                });
+            }
         } else if (prim.IsA<pxr::UsdGeomCamera>()) {
             pxr::GfCamera camera = pxr::UsdGeomCamera(prim).GetCamera(pxr::UsdTimeCode());
-            fov = camera.GetFieldOfView(pxr::GfCamera::FOVDirection::FOVHorizontal);
+            fov = camera.GetFieldOfView(pxr::GfCamera::FOVDirection::FOVHorizontal) / 3.0;
             auto transform = camera.GetTransform();
-            origin = pxr_to_vec3(pxr::GfVec3f(transform.ExtractTranslation())) + vec3(0, 5, 0);
+            origin = pxr_to_vec3(pxr::GfVec3f(transform.ExtractTranslation()));
             auto frustum = camera.GetFrustum();
-            auto look_at = pxr_to_vec3(pxr::GfVec3f(frustum.ComputeLookAtPoint()));
+            auto look_at = pxr_to_vec3(pxr::GfVec3f(frustum.ComputeLookAtPoint())) + vec3(0,-3.0,0);
             auto up = pxr_to_vec3(pxr::GfVec3f(frustum.ComputeUpVector()));
             view = glm::lookAt(origin, look_at, up);
-            dbg(vec3_to_pxr(origin), vec3_to_pxr(look_at), vec3_to_pxr(up));
         } else if (prim.IsA<pxr::UsdGeomMesh>()) {
-            auto context = MeshContext{.embree_device = device, .embree_scene = rtscene, .xform_cache = cache};
+            auto context = MeshContext{.embree_device = device, .embree_scene = scene.embree_scene, .xform_cache = cache};
 
             if (auto mesh = load_mesh(prim, context)) {
-                meshes.push_back(mesh.value());
+                scene.meshes.push_back(mesh.value());
             }
         } else if (prim.IsA<pxr::UsdLuxDomeLight>()) {
             auto dome_light = pxr::UsdLuxDomeLight(prim);
             pxr::SdfAssetPath path;
             dome_light.GetTextureFileAttr().Get(&path);
-            // environment_map_path = path.GetResolvedPath();
+            scene.emitters.environment_map.emplace(Image(path.GetResolvedPath(), tex_sys));
         } else {
             auto string = prim.GetTypeName();
             if (string == "Xform" || string == "Shader" || string == "Material" || string == "Scope" ||
@@ -133,7 +141,7 @@ int main(int argc, char *argv[]) {
 
     dbg(spheres.size());
 
-    auto sphere_geometry = RTC_INVALID_GEOMETRY_ID;
+    scene.sphere_geometry_ref = RTC_INVALID_GEOMETRY_ID;
 
     if (spheres.size() > 0) {
         RTCGeometry sphere_geom = rtcNewGeometry(device, RTC_GEOMETRY_TYPE_SPHERE_POINT);
@@ -144,13 +152,10 @@ int main(int argc, char *argv[]) {
         memcpy(vb, spheres.data(), spheres.size() * sizeof(Sphere));
 
         rtcCommitGeometry(sphere_geom);
-        sphere_geometry = rtcAttachGeometry(rtscene, sphere_geom);
+        scene.sphere_geometry_ref = rtcAttachGeometry(scene.embree_scene, sphere_geom);
         rtcReleaseGeometry(sphere_geom);
     }
-    rtcCommitScene(rtscene);
-
-    auto scene =
-        Scene{.sphere_bsdfs = std::move(sphere_bsdfs), .environment_map = Image(environment_map_path, tex_sys)};
+    rtcCommitScene(scene.embree_scene);
 
     pcg32_random_t rng;
 
@@ -161,8 +166,8 @@ int main(int argc, char *argv[]) {
     std::vector<uint64_t> channel_offsets = {0, 1, 2};
     std::vector<uint64_t> channel_strides = {3, 3, 3};
 
-    const uint32_t width = 1920 / 8;
-    const uint32_t height = 1080 / 8;
+    const uint32_t width = 1920 / 4;
+    const uint32_t height = 1080 / 4;
 
     auto accum = AccumulationBuffer(width, height);
     auto output = OutputBuffer(width, height);
@@ -175,10 +180,6 @@ int main(int argc, char *argv[]) {
     auto start = std::chrono::steady_clock::now();
     bool never_updated = true;
 
-    OIIO::TextureOpt opt;
-    opt.swrap = OIIO::TextureOpt::Wrap::WrapPeriodic;
-    opt.twrap = OIIO::TextureOpt::Wrap::WrapPeriodic;
-
     int num_shadow_rays = 10;
 
     while (true) {
@@ -187,6 +188,7 @@ int main(int argc, char *argv[]) {
             context.flags = RTC_INTERSECT_CONTEXT_FLAG_COHERENT;
             rtcInitIntersectContext(&context);
 
+            //for (size_t y = 0; y < height; y++) {
             for (size_t y = y_range.begin(); y < y_range.end(); y++) {
                 for (size_t x = 0; x < width; x++) {
                     const float u = (float(x) + UniformFloat(rng)) / width;
@@ -196,105 +198,82 @@ int main(int argc, char *argv[]) {
                     auto local_direction = normalize(vec3(target));
                     auto direction = normalize(vec3(view_inverse * vec4(local_direction, 0.0f)));
 
-                    auto ray = Ray{origin, direction, 10000.0f};
-
-                    auto rayhit = ray.as_embree();
-
-                    rtcIntersect1(rtscene, &context, &rayhit);
+                    auto rayhit = RayHit {
+                        .ray = Ray {
+                            .origin = origin,
+                            .direction = direction,
+                            .t_far = 10000.0f
+                        },
+                        .hit = Hit {
+                            .geomID = RTC_INVALID_GEOMETRY_ID
+                        }
+                    };
+                    
                     vec3 colour = vec3(0.0);
 
-                    ray = Ray(rayhit);
+                    vec3 absortion = vec3(1.0);
 
-                    if (rayhit.hit.geomID != RTC_INVALID_GEOMETRY_ID) {
-                        vec3 normal = vec3(0, 1, 0);
-                        Bsdf bsdf;
-                        vec2 uv = vec2(0);
-                        if (rayhit.hit.geomID == sphere_geometry) {
-                            normal = normalize(vec3(rayhit.hit.Ng_x, rayhit.hit.Ng_y, rayhit.hit.Ng_z));
-                            bsdf = scene.sphere_bsdfs[rayhit.hit.primID];
-                            uv = vec2(rayhit.hit.u, rayhit.hit.v);
-                        } else {
-                            auto inst_id = rayhit.hit.instID[0];
+                    bool done_looping = false;
 
-                            Mesh &mesh = meshes[inst_id];
-
-                            vec3 colour = vec3(1.0, 1.0, 1.0);
-
-                            rtcInterpolate0(mesh.geometry_handle, rayhit.hit.primID, rayhit.hit.u, rayhit.hit.v,
-                                            RTC_BUFFER_TYPE_VERTEX_ATTRIBUTE, 0, &normal.x, 3);
-                            rtcInterpolate0(mesh.geometry_handle, rayhit.hit.primID, rayhit.hit.u, rayhit.hit.v,
-                                            RTC_BUFFER_TYPE_VERTEX_ATTRIBUTE, 1, &uv.x, 2);
-
-                            normal = pxr_to_vec3(mesh.normal_matrix * vec3_to_pxr(normalize(normal)));
-
-                            if (mesh.materials.size() > 0) {
-                                auto material_index = mesh.material_indices[rayhit.hit.primID];
-                                auto material = mesh.materials.at(size_t(material_index));
-                                if (material.path) {
-                                    tex_sys.texture(material.path.value(), opt, uv.x, uv.y, 0.0, 0.0, 0.0, 0.0, 3,
-                                                    reinterpret_cast<float *>(&colour), nullptr, nullptr);
-                                }
-                            }
-
-                            bsdf =
-                                Bsdf{.tag = Bsdf::Tag::Diffuse, .params = Bsdf::Params{.diffuse = {.colour = colour}}};
-                        }
-
-                        switch (bsdf.tag) {
-                        case Bsdf::Tag::Diffuse: {
-                            auto pos = ray.o + ray.d * ray.max_t;
-                            auto params = bsdf.params.diffuse;
-
-                            for (int i = 0; i < num_shadow_rays; i++) {
-                                auto cosine_dir = CosineSampleHemisphere(vec2(UniformFloat(rng), UniformFloat(rng)));
-                                auto direction = rotation_matrix(normal) * cosine_dir;
-
-                                /*auto [pdf, sample_uv, direction] =
-                                    scene.environment_map.sample_pdf(vec2(UniformFloat(rng), UniformFloat(rng)));*/
-
-                                // auto l_dot_n = std::max(dot(direction, normal), 0.0f);
-
-                                /*if (l_dot_n == 0.0f) {
-                                    continue;
-                                }*/
-
-                                auto ray = Ray{pos + direction * vec3(0.0001f), direction, 10000.0f}.as_embree();
-
-                                rtcIntersect1(rtscene, &context, &ray);
-
-                                if (sphere_geometry != RTC_INVALID_GEOMETRY_ID && ray.hit.geomID == sphere_geometry) {
-                                    auto bsdf = scene.sphere_bsdfs[ray.hit.primID];
-                                    if (bsdf.tag == Bsdf::Tag::Emissive) {
-                                        colour += bsdf.params.emissive.radiance * vec3(1.0f / float(M_PI));
-                                    }
-                                }
-
-                                /*
-                                rtcOccluded1(rtscene, &context, &shadow_ray);
-
-                                if (shadow_ray.tfar >= 0.0) {
-                                    auto value = scene.environment_map.sample(sample_uv) / pdf;
-                                    colour += value * params.colour * vec3(l_dot_n / M_PI);
-                                }
-                                */
-
-                                /*if (std::isnan(colour.x) || std::isnan(colour.y) || std::isnan(colour.z)) {
-                                    dbg("nan!", vec3_to_pxr(colour), vec3_to_pxr(normal), pdf,
-                                        vec3_to_pxr(params.colour), l_dot_n);
-                                }*/
-                            }
-
-                            colour /= num_shadow_rays;
-
+                    for (int path_i = 0; path_i < 6; path_i++) {
+                        if (done_looping) {
                             break;
                         }
-                        case Bsdf::Tag::Emissive: {
-                            colour += bsdf.params.emissive.radiance;
-                        }
-                        }
 
-                    } else {
-                        // colour = scene.environment_map.sample_env_map(ray.d);
+                        rtcIntersect1(scene.embree_scene, &context, reinterpret_cast<RTCRayHit*>(&rayhit));
+
+                        auto ray = rayhit.ray;
+                        auto pos = ray.at(ray.t_far);
+                    
+                        if (rayhit.hit.geomID != RTC_INVALID_GEOMETRY_ID) {
+                            auto [normal, bsdf] = scene.get_intersection_for_rayhit(rayhit, tex_sys);
+
+                            switch (bsdf.tag) {
+                            case Bsdf::Tag::Diffuse: {
+                                for (int i = 0; i < num_shadow_rays; i++) {
+                                    auto [sample, direction] = scene.sample_emitter_pdf(pos, vec2(UniformFloat(rng), UniformFloat(rng)));
+                                    colour += sample * eval_diffuse(bsdf.params.diffuse, direction, normal);
+                                }
+
+                                colour /= num_shadow_rays;
+                                colour *= absortion;
+
+                                done_looping = true;
+
+                                break;
+                            }
+                            case Bsdf::Tag::Mirror: {
+                                auto reflected = reflect(ray.direction, normal);
+
+                                rayhit = RayHit {
+                                    .ray = Ray {
+                                        .origin = ray.at(ray.t_far) + reflected * 0.0001f,
+                                        .direction = reflected,
+                                        .t_far = 10000.0f
+                                    },
+                                    .hit = Hit {
+                                        .geomID = RTC_INVALID_GEOMETRY_ID
+                                    }
+                                };
+
+                                absortion *= bsdf.params.mirror.colour;
+
+                                break;
+                            }
+                            case Bsdf::Tag::Emissive: {
+                                colour += bsdf.params.emissive.radiance * absortion;
+
+                                done_looping = true;
+
+                                break;
+                            }
+                            }
+
+                        } else {
+                            if (scene.emitters.environment_map) {
+                                colour = scene.emitters.environment_map.value().sample_env_map(rayhit.ray.direction) * absortion;
+                            }
+                        }
                     }
 
                     size_t offset = (y * width + x) * 3;

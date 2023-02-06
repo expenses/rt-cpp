@@ -2,6 +2,8 @@
 #include <cstdint>
 #include <vector>
 
+using std::size_t;
+
 struct OutputBuffer {
     std::vector<float> data;
 

@@ -1,18 +1,36 @@
 #pragma once
 
-struct Ray {
-    Ray(RTCRayHit embree_ray);
-
-    Ray(glm::vec3 o, glm::vec3 d, float max_t) : o(o), d(d), max_t(max_t) {
-    }
-
-    glm::vec3 o, d;
-    float max_t;
-
-    RTCRayHit as_embree();
-};
+using namespace glm;
 
 struct Sphere {
-    glm::vec3 center;
+    vec3 center;
     float radius;
+};
+
+struct alignas(16) Ray {
+    vec3 origin;
+    float t_near;
+    vec3 direction;
+    float time;
+    float t_far;
+    uint mask;
+    uint id;
+    uint flags;
+
+    vec3 at(float t) {
+        return origin + direction * t;
+    }
+};
+
+struct alignas(16) Hit {
+    vec3 normal;
+    vec2 uv;
+    uint primID;
+    uint geomID;
+    uint instID[RTC_MAX_INSTANCE_LEVEL_COUNT];
+};
+
+struct alignas(16) RayHit {
+    Ray ray;
+    Hit hit;
 };
